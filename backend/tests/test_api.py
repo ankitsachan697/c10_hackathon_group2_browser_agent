@@ -90,11 +90,6 @@ def test_run_detail_includes_attempts_and_stable_artifact_links(api):
     client, services = api
     _, journey = create_journey(client)
     run = client.post(f"/api/journeys/{journey['id']}/run").json()["data"]
-    with services.database.transaction() as connection:
-        connection.execute(
-            "INSERT INTO run_attempts(id,run_id,attempt_number,status,created_at) VALUES (?,?,?,?,?)",
-            ("att_1", run["id"], 1, "PASSED", "2026-10-10T00:00:00+00:00"),
-        )
     evidence = services.artifacts.root / run["id"] / "success.png"
     evidence.parent.mkdir(parents=True, exist_ok=True)
     evidence.write_bytes(b"png")
@@ -126,8 +121,11 @@ def test_daily_schedule_crud_and_run_now(api):
     schedule = client.post("/api/schedules", json={
         "journey_id": journey["id"], "local_time": "09:30", "timezone": "Asia/Kolkata"
     }).json()["data"]
-    assert client.post(f"/api/schedules/{schedule['id']}/run").status_code == 200
+    run = client.post(f"/api/schedules/{schedule['id']}/run").json()["data"]
     assert client.delete(f"/api/schedules/{schedule['id']}").json()["data"]["deleted"] is True
+    retained = client.get(f"/api/runs/{run['id']}")
+    assert retained.status_code == 200
+    assert retained.json()["data"]["schedule_id"] is None
 
 
 def test_delete_preview_and_cascade(api):

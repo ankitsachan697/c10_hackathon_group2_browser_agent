@@ -58,8 +58,10 @@ class SecretRedactor:
 
 
 class PlaywrightRunner:
-    def __init__(self, artifacts_dir: str):
+    def __init__(self, artifacts_dir: str, cdp_endpoint: str | None = None, cdp_timeout_seconds: int | None = None):
         self.artifacts_dir = artifacts_dir
+        self.cdp_endpoint = cdp_endpoint
+        self.cdp_timeout_seconds = cdp_timeout_seconds
         os.makedirs(self.artifacts_dir, exist_ok=True)
 
     async def execute_script(
@@ -70,12 +72,13 @@ class PlaywrightRunner:
         timeout_seconds: Optional[int] = None,
         on_log: Optional[Callable[[Dict[str, Any]], None]] = None,
         headed: bool = False,
+        execution_id: str | None = None,
     ) -> Dict[str, Any]:
         """
         Executes a Python Playwright script.
         Logs are streamed through on_log callback with secret redaction.
         """
-        run_id = f"run_{int(time.time())}_{uuid.uuid4().hex[:6]}"
+        run_id = execution_id or f"run_{int(time.time())}_{uuid.uuid4().hex[:6]}"
         run_dir = os.path.join(self.artifacts_dir, run_id)
         os.makedirs(run_dir, exist_ok=True)
 
@@ -114,12 +117,7 @@ class PlaywrightRunner:
             f.write(wrapped_code)
 
         # Prepare execution environment
-        exec_env = os.environ.copy()
-        exec_env["ARTIFACTS_DIR"] = run_dir
-        exec_env["PYTHONUNBUFFERED"] = "1"
-        if env_vars:
-            for k, v in env_vars.items():
-                exec_env[k] = str(v)
+        exec_env = self._execution_environment(env_vars, run_dir)
 
         python_bin = sys.executable
 
@@ -240,6 +238,22 @@ class PlaywrightRunner:
             "logs": logs,
         }
 
+    def _execution_environment(self, env_vars: Optional[Dict[str, str]], run_dir: str | os.PathLike[str]) -> Dict[str, str]:
+        """Build a minimal worker environment without backend credentials."""
+        allowed_host_keys = (
+            "PATH", "LANG", "LC_ALL", "TMPDIR", "TEMP", "TMP",
+            "PLAYWRIGHT_BROWSERS_PATH", "PLAYWRIGHT_NODEJS_PATH",
+        )
+        environment = {key: os.environ[key] for key in allowed_host_keys if key in os.environ}
+        environment["ARTIFACTS_DIR"] = str(run_dir)
+        environment["PYTHONUNBUFFERED"] = "1"
+        if self.cdp_endpoint:
+            environment["PLAYWRIGHT_CDP_ENDPOINT"] = self.cdp_endpoint
+            environment["PLAYWRIGHT_CDP_TIMEOUT_SECONDS"] = str(self.cdp_timeout_seconds or 30)
+        for key, value in (env_vars or {}).items():
+            environment[key] = str(value)
+        return environment
+
     @staticmethod
     def _extract_failed_action(stderr: str) -> str:
         for line in reversed((stderr or "").splitlines()):
@@ -266,6 +280,12 @@ class PlaywrightRunner:
         else:
             script = re.sub(r'launch\(\s*headless\s*=\s*False', 'launch(headless=True', script)
 
+        script = re.sub(
+            r"([A-Za-z_][A-Za-z0-9_]*\.chromium)\.launch\(",
+            r"_connect_or_launch(\1, ",
+            script,
+        )
+
         # Inject video recording into browser.new_context
         if "new_context" in script:
             script = re.sub(
@@ -291,5 +311,12 @@ class PlaywrightRunner:
 import os, sys
 os.environ.setdefault("ARTIFACTS_DIR", {repr(run_dir)})
 run_dir = {repr(run_dir)}
+
+def _connect_or_launch(browser_type, *args, **kwargs):
+    endpoint = os.environ.get("PLAYWRIGHT_CDP_ENDPOINT")
+    if endpoint:
+        timeout_ms = int(os.environ.get("PLAYWRIGHT_CDP_TIMEOUT_SECONDS", "30")) * 1000
+        return browser_type.connect_over_cdp(endpoint, timeout=timeout_ms)
+    return browser_type.launch(*args, **kwargs)
 """
         return header + "\n" + script

@@ -143,7 +143,25 @@ class N8nClient:
             except Exception:
                 pass
 
-        # Synthesize production-ready script with custom assertions based on objective
+        if agent_call_successful:
+            candidate = n8n_agent_response
+            if isinstance(candidate, str):
+                try:
+                    candidate = json.loads(candidate)
+                except json.JSONDecodeError:
+                    candidate = {"python_script": candidate}
+            if isinstance(candidate, dict):
+                script = candidate.get("python_script") or candidate.get("script")
+                steps = candidate.get("discovered_steps") or candidate.get("steps") or []
+                if isinstance(script, str) and 0 < len(script) <= 50_000 and isinstance(steps, list):
+                    return {
+                        "python_script": script,
+                        "discovered_steps": [str(step)[:500] for step in steps[:50]],
+                        "agent_id": self.settings.n8n_discovery_agent_id,
+                        "agent_source": f"n8n Cloud Agent (ID: {self.settings.n8n_discovery_agent_id})",
+                    }
+
+        # Explicit local fallback for offline demos.
         synthesized = self._synthesize_script(url, task_objective, credentials_meta)
         synthesized["agent_id"] = self.settings.n8n_discovery_agent_id
         synthesized["agent_source"] = (
@@ -192,7 +210,12 @@ class N8nClient:
                     candidate = json.loads(candidate)
                 except json.JSONDecodeError:
                     candidate = None
-            if isinstance(candidate, dict) and isinstance(candidate.get("repaired_script"), str):
+            if (
+                isinstance(candidate, dict)
+                and set(candidate).issubset({"repaired_script", "root_cause", "failure_category", "recommended_fix", "diff_summary", "agent_id", "agent_source"})
+                and isinstance(candidate.get("repaired_script"), str)
+                and 0 < len(candidate["repaired_script"]) <= 50_000
+            ):
                 remote_repair = candidate
 
         if remote_repair:

@@ -44,7 +44,7 @@ CREATE TABLE IF NOT EXISTS runs (
   visual_outcome TEXT, started_at TEXT, finished_at TEXT, created_at TEXT NOT NULL,
   FOREIGN KEY(journey_id) REFERENCES journeys(id) ON DELETE CASCADE,
   FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE,
-  FOREIGN KEY(schedule_id) REFERENCES schedules(id) ON DELETE CASCADE
+  FOREIGN KEY(schedule_id) REFERENCES schedules(id) ON DELETE SET NULL
 );
 CREATE TABLE IF NOT EXISTS run_attempts (
   id TEXT PRIMARY KEY, run_id TEXT NOT NULL, attempt_number INTEGER NOT NULL, status TEXT NOT NULL,
@@ -78,6 +78,42 @@ class Database:
     def initialize(self) -> None:
         with self.connect() as connection:
             connection.executescript(SCHEMA)
+            schedule_fk = next(
+                (row for row in connection.execute("PRAGMA foreign_key_list(runs)") if row[3] == "schedule_id"),
+                None,
+            )
+        if schedule_fk and str(schedule_fk[6]).upper() != "SET NULL":
+            self._migrate_schedule_history_fk()
+
+    def _migrate_schedule_history_fk(self) -> None:
+        """Preserve historical runs when an existing schedule is removed."""
+        connection = sqlite3.connect(self.path)
+        try:
+            connection.execute("PRAGMA foreign_keys = OFF")
+            connection.executescript(
+                """
+                BEGIN;
+                CREATE TABLE runs_v2 (
+                  id TEXT PRIMARY KEY, journey_id TEXT, project_id TEXT, schedule_id TEXT,
+                  trigger_source TEXT NOT NULL DEFAULT 'ON_DEMAND', status TEXT NOT NULL,
+                  script_snapshot TEXT NOT NULL DEFAULT '', script_version INTEGER NOT NULL DEFAULT 1,
+                  attempt_count INTEGER NOT NULL DEFAULT 0, diagnosis_json TEXT, repair_patch TEXT,
+                  final_decision TEXT, visual_outcome TEXT, started_at TEXT, finished_at TEXT, created_at TEXT NOT NULL,
+                  FOREIGN KEY(journey_id) REFERENCES journeys(id) ON DELETE CASCADE,
+                  FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE,
+                  FOREIGN KEY(schedule_id) REFERENCES schedules(id) ON DELETE SET NULL
+                );
+                INSERT INTO runs_v2 SELECT * FROM runs;
+                DROP TABLE runs;
+                ALTER TABLE runs_v2 RENAME TO runs;
+                COMMIT;
+                """
+            )
+        except Exception:
+            connection.rollback()
+            raise
+        finally:
+            connection.close()
 
     @contextmanager
     def transaction(self) -> Iterator[sqlite3.Connection]:
@@ -91,4 +127,3 @@ class Database:
             raise
         finally:
             connection.close()
-

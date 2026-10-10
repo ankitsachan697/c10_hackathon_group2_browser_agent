@@ -1,13 +1,13 @@
 import type { ApiEnvelope } from "./types";
 
-const baseUrl = process.env.NEXT_PUBLIC_BACKEND_URL ?? "";
+export const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL ?? "";
 
 export class ApiError extends Error {
   constructor(public code: string, message: string) { super(message); }
 }
 
 export async function api<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${baseUrl}${path}`, {
+  const response = await fetch(`${backendUrl}${path}`, {
     ...init,
     headers: { "Content-Type": "application/json", ...(init?.headers ?? {}) },
   });

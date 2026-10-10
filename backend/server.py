@@ -87,7 +87,11 @@ app.add_middleware(
 
 ARTIFACTS_DIR = str(settings.artifacts_root)
 os.makedirs(ARTIFACTS_DIR, exist_ok=True)
-runner = PlaywrightRunner(artifacts_dir=ARTIFACTS_DIR)
+runner = PlaywrightRunner(
+    artifacts_dir=ARTIFACTS_DIR,
+    cdp_endpoint=settings.playwright_cdp_endpoint,
+    cdp_timeout_seconds=settings.playwright_cdp_timeout_seconds,
+)
 domain_database = Database(settings.database_path)
 domain_database.initialize()
 if settings.runner_timeout_seconds is not None:
@@ -182,6 +186,7 @@ def health_check():
         "status": "healthy",
         "timestamp": time.time(),
         "runner_ready": settings.runner_timeout_seconds is not None,
+        "browser_mode": "remote_cdp" if settings.playwright_cdp_endpoint else "local",
         "n8n_connected": n8n_client.is_configured,
         "scheduler_ready": bool(schedule_service and getattr(app.state, "scheduler_ready", False)),
     }
@@ -218,7 +223,11 @@ async def discovery_and_generate(req: DiscoveryRequest):
 
 @app.post("/api/execute")
 async def execute_script(req: ExecuteRequest):
-    """Standalone Agent 2: Execution Agent (Python Playwright)"""
+    """Retired: operational execution accepts only a persisted journey ID."""
+    raise HTTPException(status_code=410, detail="Raw script execution is retired. Save a journey and run its ID.")
+
+    # Kept unreachable for one release so older imports fail explicitly rather than
+    # silently executing caller-controlled Python.
     run_id = f"run_{int(time.time())}"
     active_run_logs[run_id] = []
 
@@ -416,6 +425,8 @@ async def execute_direct_script(req: ExecuteScriptRequest):
     If execution fails and auto_heal is True, the Error Diagnosis and Adaptive Repair agents
     are invoked automatically to diagnose the failure, repair the script, and re-execute.
     """
+    raise HTTPException(status_code=410, detail="Raw script execution is retired. Save a journey and run its ID.")
+
     run_id = f"direct_{int(time.time())}"
     active_run_logs[run_id] = []
 
@@ -575,7 +586,9 @@ def delete_test_case(case_id: str):
 
 @app.post("/api/test-cases/{case_id}/run")
 async def run_saved_test_case(case_id: str, headed: bool = False):
-    """Executes a saved test case by its ID and records results."""
+    """Retired legacy store; migrate the case to a persisted journey."""
+    raise HTTPException(status_code=410, detail="Legacy test-case execution is retired. Run a saved journey instead.")
+
     case = suite_manager.get_test_case(case_id)
     if not case:
         raise HTTPException(status_code=404, detail="Test case not found")
@@ -613,29 +626,7 @@ def get_artifact(file_path: str):
     Universal artifact server.
     Serves screenshots, pixelmatch diffs, golden baselines, and WebM video recordings.
     """
-    # 1. Direct path in artifacts directory
-    candidate_path = os.path.join(ARTIFACTS_DIR, file_path)
-    if os.path.exists(candidate_path) and os.path.isfile(candidate_path):
-        media_type = "video/webm" if candidate_path.endswith(".webm") else None
-        return FileResponse(candidate_path, media_type=media_type)
-
-    # 2. Check by filename across newest run directories
-    basename = os.path.basename(file_path)
-    try:
-        subdirs = sorted(
-            [os.path.join(ARTIFACTS_DIR, d) for d in os.listdir(ARTIFACTS_DIR) if os.path.isdir(os.path.join(ARTIFACTS_DIR, d))],
-            key=os.path.getmtime,
-            reverse=True
-        )
-        for sub in subdirs:
-            cand = os.path.join(sub, basename)
-            if os.path.exists(cand) and os.path.isfile(cand):
-                media_type = "video/webm" if cand.endswith(".webm") else None
-                return FileResponse(cand, media_type=media_type)
-    except Exception:
-        pass
-
-    raise HTTPException(status_code=404, detail=f"Artifact not found: {file_path}")
+    raise HTTPException(status_code=410, detail="Legacy path-based artifact access is retired. Use a stable artifact ID.")
 
 
 app.state.settings = settings

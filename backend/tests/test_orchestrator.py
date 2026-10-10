@@ -93,6 +93,13 @@ async def test_eligible_failure_repairs_once_and_records_healed_pass(domain):
     assert run["attempt_count"] == 2
     assert runner.scripts == ["print('saved')", "print('healed')"]
     assert len(agents.repair_calls) == 1
+    with database.connect() as connection:
+        attempts = connection.execute(
+            "SELECT attempt_number, status FROM run_attempts WHERE run_id = ? ORDER BY attempt_number", (run["id"],)
+        ).fetchall()
+    assert [(row[0], row[1]) for row in attempts] == [(1, "FAILED"), (2, "PASSED")]
+    assert run["started_at"] is not None
+    assert run["finished_at"] is not None
 
 
 @pytest.mark.asyncio
@@ -132,3 +139,20 @@ async def test_snapshot_rerun_uses_historical_script(domain):
     await RunOrchestrator(database, runner, agents, 30).run_journey(journey["id"], TriggerSource.RERUN_SNAPSHOT, script_version=historic["id"])
 
     assert runner.scripts == ["print('historic')"]
+
+
+@pytest.mark.asyncio
+async def test_unexpected_runner_error_finalizes_run_for_manual_attention(domain):
+    database, _, journey = domain
+
+    class BrokenRunner:
+        async def execute_script(self, **kwargs):
+            raise RuntimeError("worker crashed")
+
+    run = await RunOrchestrator(database, BrokenRunner(), FakeAgents(), 30).run_journey(
+        journey["id"], TriggerSource.ON_DEMAND
+    )
+
+    assert run["status"] == RunStatus.NEEDS_ATTENTION
+    assert run["finished_at"] is not None
+    assert "RuntimeError" in run["final_decision"]

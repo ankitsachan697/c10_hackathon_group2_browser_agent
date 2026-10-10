@@ -28,6 +28,11 @@ def _journey(repo, resource_id):
     return value
 
 
+@router.get("")
+def list_journeys(svc: AppServices = Depends(services)):
+    return ok(JourneyRepository(svc.database).list())
+
+
 @router.post("", status_code=201)
 def create_journey(payload: JourneyCreate, svc: AppServices = Depends(services)):
     if not ProjectRepository(svc.database).get(payload.project_id):

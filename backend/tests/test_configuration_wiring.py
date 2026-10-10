@@ -12,6 +12,8 @@ import test_suite_manager
 def test_operational_settings_are_absent_until_explicitly_configured(monkeypatch):
     for name in (
         "RUNNER_TIMEOUT_SECONDS",
+        "PLAYWRIGHT_CDP_ENDPOINT",
+        "PLAYWRIGHT_CDP_TIMEOUT_SECONDS",
         "VISUAL_DIFF_THRESHOLD",
         "VISUAL_TOLERANCE_PERCENT",
         "SCHEDULER_TIMEZONE",
@@ -31,6 +33,8 @@ def test_operational_settings_are_absent_until_explicitly_configured(monkeypatch
     settings = Settings.from_env()
 
     assert settings.runner_timeout_seconds is None
+    assert settings.playwright_cdp_endpoint is None
+    assert settings.playwright_cdp_timeout_seconds is None
     assert settings.visual_diff_threshold is None
     assert settings.visual_tolerance_percent is None
     assert settings.scheduler_timezone is None
@@ -148,16 +152,16 @@ async def test_saved_script_run_uses_configured_runner_and_visual_settings(monke
         ),
     )
 
-    await server.execute_direct_script(
-        server.ExecuteScriptRequest(
-            script="print('saved')", url="https://target.example.test", timeout_seconds=47, auto_heal=False
+    with pytest.raises(server.HTTPException) as error:
+        await server.execute_direct_script(
+            server.ExecuteScriptRequest(
+                script="print('saved')", url="https://target.example.test", timeout_seconds=47, auto_heal=False
+            )
         )
-    )
 
-    assert runner_calls[0]["timeout_seconds"] == 47
-    assert runner_calls[0]["script_code"] == "print('saved')"
-    assert visual_calls[0]["threshold"] == 0.23
-    assert visual_calls[0]["tolerance_percent"] == 0.75
+    assert error.value.status_code == 410
+    assert runner_calls == []
+    assert visual_calls == []
 
 
 def test_suite_manager_uses_the_configured_artifact_root_and_starts_empty(tmp_path):

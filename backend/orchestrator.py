@@ -3,20 +3,25 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
+import mimetypes
+import uuid
 from dataclasses import replace
+from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Iterable
 
 try:
     from .database import Database
     from .failure_context import build_failure_packet, classify_failure
     from .models import RunStatus, TriggerSource
-    from .repositories import JourneyRepository, RunRepository
+    from .repositories import ArtifactRepository, JourneyRepository, RunRepository
 except ImportError:
     from database import Database
     from failure_context import build_failure_packet, classify_failure
     from models import RunStatus, TriggerSource
-    from repositories import JourneyRepository, RunRepository
+    from repositories import ArtifactRepository, JourneyRepository, RunRepository
 
 
 class RunOverlapError(RuntimeError):
@@ -31,8 +36,56 @@ class RunOrchestrator:
         self.timeout_seconds = timeout_seconds
         self.journeys = JourneyRepository(database)
         self.runs = RunRepository(database)
+        self.artifacts = ArtifactRepository(database)
         self._active: set[str] = set()
         self._guard = asyncio.Lock()
+
+    @staticmethod
+    def _now() -> str:
+        return datetime.now(timezone.utc).isoformat()
+
+    def _record_attempt(self, run_id: str, attempt_number: int, result: dict[str, Any]) -> None:
+        with self.database.transaction() as connection:
+            connection.execute(
+                """INSERT INTO run_attempts(id,run_id,attempt_number,status,stdout,stderr,created_at)
+                   VALUES (?,?,?,?,?,?,?)""",
+                (
+                    f"att_{uuid.uuid4().hex}", run_id, attempt_number,
+                    "PASSED" if result.get("passed") else "FAILED",
+                    str(result.get("stdout", ""))[:100_000],
+                    str(result.get("stderr", ""))[:100_000],
+                    self._now(),
+                ),
+            )
+        root_value = getattr(self.runner, "artifacts_dir", None)
+        run_dir_value = result.get("run_dir")
+        if not root_value or not run_dir_value:
+            return
+        root = Path(root_value).resolve()
+        run_dir = Path(run_dir_value).resolve()
+        if not run_dir.is_relative_to(root) or not run_dir.exists():
+            return
+        for path in run_dir.rglob("*"):
+            if not path.is_file() or path.name == "test_script.py":
+                continue
+            relative = path.relative_to(root).as_posix()
+            kind = (
+                "screenshot" if path.suffix.lower() in {".png", ".jpg", ".jpeg"}
+                else "video" if path.suffix.lower() == ".webm"
+                else "dom" if path.suffix.lower() in {".html", ".htm"}
+                else "log"
+            )
+            self.artifacts.create({
+                "run_id": run_id,
+                "kind": kind,
+                "storage_path": relative,
+                "media_type": mimetypes.guess_type(path.name)[0] or "application/octet-stream",
+                "size_bytes": path.stat().st_size,
+                "checksum": hashlib.sha256(path.read_bytes()).hexdigest(),
+            })
+
+    def _finish(self, run_id: str, changes: dict[str, Any]) -> dict[str, Any]:
+        return self.runs.update(run_id, {**changes, "finished_at": self._now()})
 
     async def _claim(self, scope: str) -> None:
         async with self._guard:
@@ -70,14 +123,24 @@ class RunOrchestrator:
                 "script_snapshot": script,
                 "script_version": version,
             })
-            self.runs.update(run["id"], {"status": RunStatus.RUNNING.value})
-            first = await self.runner.execute_script(script_code=script, timeout_seconds=self.timeout_seconds)
+            self.runs.update(run["id"], {"status": RunStatus.RUNNING.value, "started_at": self._now()})
+            try:
+                first = await self.runner.execute_script(
+                    script_code=script, timeout_seconds=self.timeout_seconds,
+                    execution_id=f"{run['id']}/attempt-1",
+                )
+            except Exception as error:
+                return self._finish(run["id"], {
+                    "status": RunStatus.NEEDS_ATTENTION.value,
+                    "final_decision": f"Execution worker failed: {type(error).__name__}",
+                })
+            self._record_attempt(run["id"], 1, first)
             if first.get("passed"):
-                return self.runs.update(run["id"], {"status": RunStatus.PASSED.value, "attempt_count": 1})
+                return self._finish(run["id"], {"status": RunStatus.PASSED.value, "attempt_count": 1})
 
             decision = classify_failure(first)
             if not decision.eligible:
-                return self.runs.update(run["id"], {
+                return self._finish(run["id"], {
                     "status": RunStatus.NEEDS_ATTENTION.value,
                     "attempt_count": 1,
                     "final_decision": decision.reason,
@@ -88,13 +151,13 @@ class RunOrchestrator:
             try:
                 repair = self.agents.diagnose_and_repair(packet)
             except Exception as error:
-                return self.runs.update(run["id"], {
+                return self._finish(run["id"], {
                     "status": RunStatus.NEEDS_ATTENTION.value,
                     "attempt_count": 1,
                     "final_decision": f"Repair service unavailable: {type(error).__name__}",
                 })
             if not isinstance(repair, dict) or not isinstance(repair.get("repaired_script"), str) or not repair["repaired_script"].strip():
-                return self.runs.update(run["id"], {
+                return self._finish(run["id"], {
                     "status": RunStatus.NEEDS_ATTENTION.value,
                     "attempt_count": 1,
                     "final_decision": "Repair response was invalid",
@@ -105,8 +168,19 @@ class RunOrchestrator:
                 "diagnosis_json": json.dumps({key: value for key, value in repair.items() if key != "repaired_script"}),
                 "repair_patch": repair["repaired_script"],
             })
-            second = await self.runner.execute_script(script_code=repair["repaired_script"], timeout_seconds=self.timeout_seconds)
-            return self.runs.update(run["id"], {
+            try:
+                second = await self.runner.execute_script(
+                    script_code=repair["repaired_script"], timeout_seconds=self.timeout_seconds,
+                    execution_id=f"{run['id']}/attempt-2",
+                )
+            except Exception as error:
+                return self._finish(run["id"], {
+                    "status": RunStatus.NEEDS_ATTENTION.value,
+                    "attempt_count": 1,
+                    "final_decision": f"Repair retry worker failed: {type(error).__name__}",
+                })
+            self._record_attempt(run["id"], 2, second)
+            return self._finish(run["id"], {
                 "status": (RunStatus.PASSED_AFTER_REPAIR.value if second.get("passed") else RunStatus.NEEDS_ATTENTION.value),
                 "attempt_count": 2,
                 "final_decision": "Verified repaired script" if second.get("passed") else "Automatic retry failed",

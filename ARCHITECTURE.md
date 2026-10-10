@@ -19,6 +19,8 @@ flowchart LR
 
 FastAPI owns resource state, orchestration, scheduling, retry policy, and artifact lifecycle. n8n never decides whether an operational run starts and does not sit in the normal execution path.
 
+The execution adapter supports two browser locations: local Chromium for development and a deployment-configured Chrome DevTools endpoint for hosted environments. `PLAYWRIGHT_CDP_ENDPOINT` may point to a managed browser or to a user's local Chrome through an authenticated private tunnel. The endpoint is injected only into the runner subprocess and is not stored with journeys or runs.
+
 ## Run lifecycle
 
 ```mermaid

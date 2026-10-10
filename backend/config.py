@@ -77,6 +77,8 @@ class Settings:
     product_name: str | None
     cors_origins: tuple[str, ...]
     runner_timeout_seconds: int | None
+    playwright_cdp_endpoint: str | None
+    playwright_cdp_timeout_seconds: int | None
     visual_diff_threshold: float | None
     visual_tolerance_percent: float | None
     scheduler_timezone: str | None
@@ -109,6 +111,8 @@ class Settings:
             product_name=_optional_env("PRODUCT_NAME"),
             cors_origins=cors_origins,
             runner_timeout_seconds=_positive_int_from_env("RUNNER_TIMEOUT_SECONDS"),
+            playwright_cdp_endpoint=_optional_env("PLAYWRIGHT_CDP_ENDPOINT"),
+            playwright_cdp_timeout_seconds=_positive_int_from_env("PLAYWRIGHT_CDP_TIMEOUT_SECONDS"),
             visual_diff_threshold=_fraction_from_env("VISUAL_DIFF_THRESHOLD"),
             visual_tolerance_percent=_fraction_from_env("VISUAL_TOLERANCE_PERCENT"),
             scheduler_timezone=_timezone_from_env(),

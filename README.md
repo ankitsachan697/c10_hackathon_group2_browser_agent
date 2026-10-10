@@ -27,6 +27,10 @@ npm --prefix frontend run dev
 
 Open `http://localhost:3000`. All environment-specific values live in environment variables; no n8n URL, token, agent ID, model, credential, test URL, or login is committed. See [.env.example](.env.example).
 
+### Browser execution after deployment
+
+The runner launches Chromium locally by default. For a backend deployed on a server, set `PLAYWRIGHT_CDP_ENDPOINT` to a secured `ws://` or `wss://` Chrome DevTools endpoint. Saved scripts continue to call `chromium.launch()`; the runner redirects that call to `connect_over_cdp()` without changing the saved script. This works with a browser service or a local Chrome exposed through an authenticated private tunnel. Never expose a raw debugging port to the public internet.
+
 ## Verification
 
 ```bash
