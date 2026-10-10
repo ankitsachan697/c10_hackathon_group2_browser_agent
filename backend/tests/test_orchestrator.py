@@ -248,3 +248,25 @@ async def test_missing_vault_creates_auditable_needs_attention_run(domain):
 
     assert run["status"] == RunStatus.NEEDS_ATTENTION
     assert run["final_decision"] == "Credential vault unavailable"
+
+
+@pytest.mark.asyncio
+async def test_artifact_symlinks_are_removed_without_following_them(domain, tmp_path):
+    database, _, journey = domain
+    outside = tmp_path / "outside.txt"
+    outside.write_text("must remain unchanged")
+
+    class SymlinkRunner(FakeRunner):
+        artifacts_dir = str(tmp_path / "artifacts")
+        async def execute_script(self, **kwargs):
+            run_dir = Path(self.artifacts_dir) / kwargs["execution_id"]
+            run_dir.mkdir(parents=True)
+            (run_dir / "execution.log").symlink_to(outside)
+            return {**passing(), "run_dir": str(run_dir)}
+
+    await RunOrchestrator(database, SymlinkRunner([passing()]), FakeAgents(), 30).run_journey(
+        journey["id"], TriggerSource.ON_DEMAND
+    )
+
+    assert outside.read_text() == "must remain unchanged"
+    assert not list((tmp_path / "artifacts").rglob("execution.log"))

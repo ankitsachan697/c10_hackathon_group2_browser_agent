@@ -34,6 +34,16 @@ def test_wrapper_preserves_browser_close_indentation(tmp_path):
     compile(wrapped, "wrapped.py", "exec")
 
 
+def test_wrapper_handles_empty_context_and_injects_credential_mask_before_page(tmp_path):
+    wrapped = PlaywrightRunner(tmp_path)._wrap_script(
+        "with sync_playwright() as p:\n    browser = p.chromium.launch()\n    context = browser.new_context()\n    page = context.new_page()\n",
+        str(tmp_path / "run"),
+    )
+    compile(wrapped, "wrapped.py", "exec")
+    assert "new_context(," not in wrapped
+    assert wrapped.index("context.add_init_script") < wrapped.index("page = context.new_page()")
+
+
 def test_execution_environment_does_not_inherit_backend_secrets(tmp_path, monkeypatch):
     monkeypatch.setenv("N8N_BEARER_TOKEN", "must-not-leak")
     monkeypatch.setenv("PATH", "/usr/bin")
@@ -89,6 +99,7 @@ def test_container_worker_has_os_isolation_and_only_run_mount(tmp_path):
     assert str(tmp_path / "run") in rendered
     assert "AUTH_PASSWORD" in command
     assert "secret" not in rendered
+    assert "--name" in command
 
 
 def test_host_execution_requires_explicit_local_opt_in(tmp_path):

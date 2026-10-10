@@ -73,6 +73,13 @@ class RunOrchestrator:
         if not run_dir.is_relative_to(root) or not run_dir.exists():
             return
         for path in run_dir.rglob("*"):
+            if path.is_symlink():
+                path.unlink(missing_ok=True)
+                continue
+            try:
+                path.resolve().relative_to(run_dir)
+            except (OSError, ValueError):
+                continue
             if not path.is_file() or path.name == "test_script.py":
                 continue
             if path.suffix.lower() in {".txt", ".log", ".html", ".htm", ".json"}:

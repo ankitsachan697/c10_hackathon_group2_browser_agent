@@ -1,7 +1,7 @@
 import applicationConfig from "../../../../config/application.json";
 
-function configuredBackend(): string {
-  return process.env.BACKEND_INTERNAL_URL ?? applicationConfig.backend.internalUrl;
+export function configuredBackend(): string {
+  return process.env.BACKEND_INTERNAL_URL?.trim() || applicationConfig.backend.internalUrl;
 }
 
 async function proxy(request: Request, context: { params: Promise<{ path: string[] }> }) {

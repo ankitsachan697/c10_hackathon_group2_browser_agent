@@ -17,6 +17,7 @@ import shutil
 import asyncio
 import traceback
 import ast
+import stat
 from typing import Dict, Any, List, Optional, Callable
 from pathlib import Path
 
@@ -170,8 +171,9 @@ class PlaywrightRunner:
         emit_log("INFO", f"⚡ Launching Chromium browser runner (headed={headed})...")
 
         start_time = time.time()
+        container_name = f"outskill-{re.sub(r'[^a-zA-Z0-9_.-]', '-', run_id)[:100]}" if self.container_image else None
         try:
-            command = self._worker_command(script_path, run_dir, exec_env)
+            command = self._worker_command(script_path, run_dir, exec_env, container_name=container_name)
             proc = await asyncio.create_subprocess_exec(
                 *command,
                 stdout=asyncio.subprocess.PIPE,
@@ -213,6 +215,7 @@ class PlaywrightRunner:
             emit_log("ERROR", f"⏱️ Script execution timed out after {timeout_seconds}s!")
             try:
                 proc.kill()
+                await proc.wait()
             except Exception:
                 pass
             exit_code = -1
@@ -220,6 +223,13 @@ class PlaywrightRunner:
             duration = round(time.time() - start_time, 2)
             emit_log("ERROR", f"Execution error: {str(e)}")
             exit_code = 1
+        finally:
+            if container_name:
+                cleanup = await asyncio.create_subprocess_exec(
+                    "docker", "rm", "-f", container_name,
+                    stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL,
+                )
+                await cleanup.wait()
 
         # Scan for generated artifacts (screenshots and video)
         screenshots = [
@@ -253,7 +263,7 @@ class PlaywrightRunner:
 
         dom_snapshot_file = os.path.join(run_dir, "dom_snapshot.html")
         dom_snapshot = ""
-        if os.path.exists(dom_snapshot_file):
+        if self._safe_regular_file(Path(dom_snapshot_file), Path(run_dir)):
             with open(dom_snapshot_file, "r", encoding="utf-8", errors="replace") as f:
                 dom_snapshot = f.read(50000)  # Max 50KB summary
             sanitized = redactor.redact(dom_snapshot)
@@ -304,10 +314,20 @@ class PlaywrightRunner:
             environment[key] = str(value)
         return environment
 
-    def _worker_command(self, script_path: str, run_dir: str, environment: Dict[str, str]) -> List[str]:
+    @staticmethod
+    def _safe_regular_file(path: Path, root: Path) -> bool:
+        try:
+            if path.is_symlink() or not stat.S_ISREG(path.lstat().st_mode):
+                return False
+            path.resolve().relative_to(root.resolve())
+            return True
+        except (FileNotFoundError, OSError, ValueError):
+            return False
+
+    def _worker_command(self, script_path: str, run_dir: str, environment: Dict[str, str], container_name: str | None = None) -> List[str]:
         if self.container_image:
             command = [
-                "docker", "run", "--rm", "--read-only", "--cap-drop=ALL",
+                "docker", "run", "--rm", "--name", container_name or "outskill-browser-runner", "--read-only", "--cap-drop=ALL",
                 "--security-opt=no-new-privileges", "--pids-limit=256", "--memory=1g", "--cpus=1",
                 "--user=65532:65532", "--tmpfs=/tmp:rw,nosuid,size=256m",
                 "--mount", f"type=bind,src={Path(run_dir).resolve()},dst=/work",
@@ -356,17 +376,26 @@ class PlaywrightRunner:
 
         # Inject video recording into browser.new_context
         if "new_context" in script:
-            script = re.sub(
-                r'new_context\((.*?)\)',
-                r'new_context(\1, record_video_dir=' + repr(run_dir) + ', record_video_size={"width": 1280, "height": 800})',
-                script
-            )
+            def add_video(match: re.Match[str]) -> str:
+                arguments = match.group(1)
+                if "record_video_dir" in arguments:
+                    return match.group(0)
+                prefix = f"{arguments}, " if arguments.strip() else ""
+                return f'new_context({prefix}record_video_dir={run_dir!r}, record_video_size={{"width": 1280, "height": 800}})'
+            script = re.sub(r'new_context\((.*?)\)', add_video, script, flags=re.DOTALL)
         elif "new_page" in script and "new_context" not in script:
             # Wrap browser.new_page with a context that records video
             script = script.replace(
                 "page = browser.new_page()",
                 f"context = browser.new_context(record_video_dir={repr(run_dir)}, record_video_size={{'width': 1280, 'height': 800}})\n        page = context.new_page()"
             )
+
+        credential_mask = """(() => { const apply = () => document.querySelectorAll('input[type=password],input[type=email],input[name=username],input#username,input#email,input[autocomplete=username]').forEach(el => { el.style.filter = 'blur(10px)'; }); new MutationObserver(apply).observe(document.documentElement, {subtree:true, childList:true}); addEventListener('DOMContentLoaded', apply); })();"""
+        script = re.sub(
+            r"(?m)^([ \t]*)(page\s*=\s*context\.new_page\(\)[ \t]*)$",
+            lambda match: f"{match.group(1)}context.add_init_script({credential_mask!r})\n{match.group(1)}{match.group(2)}",
+            script,
+        )
 
         # Ensure context.close() is explicitly called before browser.close()
         if "browser.close()" in script:
