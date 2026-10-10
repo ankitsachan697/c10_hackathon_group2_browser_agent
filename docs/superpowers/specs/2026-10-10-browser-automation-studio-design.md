@@ -1,7 +1,7 @@
 # Browser Automation Studio Redesign
 
 **Date:** 2026-10-10
-**Status:** Approved design draft
+**Status:** Approved implementation baseline
 
 ## Purpose
 
@@ -92,7 +92,9 @@ Rules:
 
 ### Journey
 
-- Project reference, name, objective, target URL, saved Playwright script, script version, active state, browser configuration, visual threshold, baseline state, and latest run summary.
+- Project reference, name, objective, target URL, saved Playwright script, script version, active state, browser configuration, visual threshold, baseline state, latest run summary, and an optional encrypted credential reference.
+
+Journey credentials support reusable on-demand, scheduled, project, rerun, and repair-retry execution. The UI accepts a username and masked password independently from the natural-language objective. The backend encrypts credentials before persistence, never returns secret values through an API, and decrypts them only in memory immediately before starting the isolated Playwright worker. Generated scripts read `AUTH_USERNAME` and `AUTH_PASSWORD`; credentials are never embedded in scripts or sent to n8n. A stored password is represented to clients only as a boolean or masked placeholder, and editing it requires replacement rather than retrieval.
 
 ### Schedule
 
@@ -152,6 +154,7 @@ The visual system borrows the strongest patterns from `xray_lens`: a compact dar
 - Product copy uses “Browser Automation Studio” and operational language.
 - The top bar reports backend, runner, scheduler, and n8n health.
 - A primary New journey action opens a guided creation flow.
+- An empty project selector never traps a first-time user. When no project exists, the journey flow presents a Create first project action. The selector also exposes a New project action for later use. Project creation happens in an accessible modal, and a successfully created project is selected automatically without losing journey form state.
 - Tables support search, filters, sorting, pagination, bulk selection, and meaningful empty/loading/error states.
 - Context menus reduce button clutter.
 - Destructive actions use accessible confirmation dialogs.
@@ -165,10 +168,14 @@ The visual system borrows the strongest patterns from `xray_lens`: a compact dar
 
 ## Configuration and Security
 
-- API base URL, paths, branding, retry count, timeouts, thresholds, scheduler behavior, retention, and feature flags come from environment-backed settings with safe defaults.
+- Non-sensitive integration and product settings live in a tracked `config/application.json`: n8n endpoint, published agent IDs, feature flags, backend routing defaults, branding, timeouts, thresholds, scheduler behavior, and retry policy. Environment variables may override tracked values for a deployment without requiring a source change.
+- Secrets never live in tracked JSON or YAML. `N8N_BEARER_TOKEN` and `CREDENTIAL_ENCRYPTION_KEY` are runtime-only values supplied locally through an untracked environment or by GitHub Actions secrets.
+- GitHub Actions workflow YAML maps `${{ secrets.N8N_BEARER_TOKEN }}` and `${{ secrets.CREDENTIAL_ENCRYPTION_KEY }}` into the runtime environment without printing them. GitHub Secrets do not automatically configure a developer workstation or a separately hosted server.
+- The frontend uses same-origin `/api/*` requests. Next.js proxies them to the configured internal backend address, avoiding browser CORS coupling and removing the normal requirement for a public `NEXT_PUBLIC_BACKEND_URL`.
 - Real credentials and production endpoints are not seed values in UI source code.
 - Demo fixtures are isolated from product defaults.
 - Credentials are referenced by keys and injected only into the runner process.
+- Credential encryption uses authenticated encryption with a deployment-held master key. Startup fails clearly when stored credentials must be used but no valid encryption key is available. Key material is never passed to the Playwright worker.
 - Logs and persisted failure packets are redacted before storage or transmission.
 - Artifact paths are resolved beneath configured roots and are not accepted as unrestricted filesystem paths.
 - The pasted n8n bearer credential must not be committed and should be rotated after configuration.
@@ -176,6 +183,8 @@ The visual system borrows the strongest patterns from `xray_lens`: a compact dar
 ## Error Handling
 
 - API failures use structured codes and human-readable messages.
+- Frontend transport failures render a contextual Backend unavailable state with the attempted service and a retry action; they do not surface an uncaught `Failed to fetch` development overlay.
+- Health reporting distinguishes API reachability, runner readiness, scheduler readiness, and n8n connectivity, and supplies actionable configuration guidance without exposing secret values.
 - Scheduler startup reconciles missed/next runs without duplicating execution.
 - A run rejected because an identical scope is active records or reports a clear overlap decision.
 - n8n outage leaves the failed run eligible for manual intervention rather than hiding the failure.
@@ -187,6 +196,7 @@ The visual system borrows the strongest patterns from `xray_lens`: a compact dar
 - Unit tests cover repositories, scheduling calculations, overlap prevention, state transitions, deletion, redaction, failure-packet compaction, and repair eligibility.
 - API integration tests cover CRUD, Run now, historical rerun choices, one-retry enforcement, cascade deletion, artifact trash behavior, and restart-safe schedules.
 - Frontend tests cover navigation, forms, confirmation dialogs, status rendering, filters, action menus, and error/empty/loading states.
+- Credential tests prove ciphertext is persisted, plaintext is absent from database/API/log/script/failure packets, and the runner alone receives decrypted `AUTH_USERNAME` and `AUTH_PASSWORD`.
 - Production type-check, lint, and build must pass.
 - Accessibility checks cover keyboard navigation, names, focus, contrast, reduced motion, and dialog behavior.
 - Browser validation covers journey creation, direct saved-script execution, daily schedule creation, manual Run now, eligible repair and pass, retry failure to Needs attention, historical rerun, and project/run deletion.
@@ -205,4 +215,8 @@ The visual system borrows the strongest patterns from `xray_lens`: a compact dar
 10. Outskill branding is visible and the interface contains no “enterprise” marketing copy.
 11. All operational defaults and integrations are configuration-driven.
 12. The critical frontend and backend validation suites pass.
-
+13. A first-time user can create and auto-select a project from the New journey flow.
+14. A missing backend produces a recoverable UI error rather than an uncaught runtime exception.
+15. Journey credentials are encrypted at rest, masked in the UI, and injected only for execution across manual and scheduled triggers.
+16. Screenshots, video, logs, attempts, and immutable Playwright script snapshots are retained and inspectable from the associated run.
+17. Only secret values are deployment-injected; safe integration settings are maintained in tracked JSON, with GitHub Actions secret mappings in workflow YAML.
