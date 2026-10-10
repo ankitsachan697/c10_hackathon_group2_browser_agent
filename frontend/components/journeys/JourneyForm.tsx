@@ -4,11 +4,13 @@ import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Eye, EyeOff, FolderPlus, Sparkles } from "lucide-react";
 import { api } from "@/lib/api";
-import type { GenerationOperation, Project } from "@/lib/types";
+import type { GenerationOperation, Project, Run } from "@/lib/types";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { CreateProjectDialog } from "@/components/projects/CreateProjectDialog";
 import { RunActivity } from "@/components/runs/RunActivity";
+import { LiveRunProgress } from "@/components/runs/LiveRunProgress";
+import { useActivityEvents } from "@/components/runs/useActivityEvents";
 import { CompanionPicker } from "@/components/browser/CompanionPicker";
 
 const operationKey = "outskill.activeGeneration";
@@ -30,11 +32,16 @@ export function JourneyForm() {
   const [companionId, setCompanionId] = useState("");
   const [offline, setOffline] = useState(false);
   const [operation, setOperation] = useState<GenerationOperation | null>(null);
+  const [run, setRun] = useState<Run | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const submitKey = useRef<string | null>(null);
   const operationId = operation?.id;
   const operationStatus = operation?.status;
+  const runId = operation?.run_id ?? undefined;
+  const runTerminal = ["PASSED", "PASSED_AFTER_REPAIR", "NEEDS_ATTENTION", "FAILED"].includes(run?.status ?? "");
+  const operationFeed = useActivityEvents("operation", operationId, operationStatus === "FAILED" || operationStatus === "COMPLETED");
+  const runFeed = useActivityEvents("run", runId, runTerminal);
 
   const loadProjects = useCallback(async () => {
     setProjectsLoading(true); setProjectsError("");
@@ -66,6 +73,17 @@ export function JourneyForm() {
     const timer = window.setInterval(poll, 1200);
     return () => window.clearInterval(timer);
   }, [operationId, operationStatus]);
+
+  useEffect(() => {
+    if (!runId) return;
+    let active = true;
+    const poll = () => { void api<Run>(`/api/runs/${runId}`).then(value => { if (active) setRun(value); }).catch(failure => {
+      if (active) setError(failure instanceof Error ? failure.message : "Run status unavailable");
+    }); };
+    poll();
+    const timer = window.setInterval(poll, runTerminal ? 5000 : 1200);
+    return () => { active = false; window.clearInterval(timer); };
+  }, [runId, runTerminal]);
 
   const createdProject = (project: Project) => {
     setProjects(values => [...values, project]);
@@ -100,6 +118,7 @@ export function JourneyForm() {
     sessionStorage.removeItem(operationKey);
     submitKey.current = null;
     setOperation(null);
+    setRun(null);
     if (passwordRef.current) passwordRef.current.value = "";
     setName(""); setUrl(""); setObjective(""); setUsername(""); setPassword(""); setError("");
   };
@@ -130,9 +149,12 @@ export function JourneyForm() {
         <div className="wizard-actions"><Button type="submit" aria-label="Verify & record live" disabled={!canSubmit || busy || Boolean(operation)}><Sparkles size={16}/>{busy ? "Starting…" : "Verify & record live"}</Button></div>
       </form>
     </Card>
-    {operation && <Card><div className="operation-heading"><div><p className="eyebrow">Live activity</p><h2>{operation.status === "FAILED" ? "Generation needs attention" : operation.status === "COMPLETED" ? "First run complete" : "Discovering and running"}</h2></div><div className="run-actions">{operation.run_id && <Link className="button primary-link" href={`/runs/${operation.run_id}`}>Open run</Link>}{["FAILED", "COMPLETED"].includes(operation.status) && <Button type="button" className="button-secondary" onClick={startAnother}>Create another journey</Button>}</div></div>
+    {operation && <Card><div className="operation-heading"><div><p className="eyebrow">Live activity</p><h2>{operation.status === "FAILED" ? "Generation needs attention" : run?.status === "PASSED" || run?.status === "PASSED_AFTER_REPAIR" ? "First run passed" : run?.status === "NEEDS_ATTENTION" ? "Run needs attention" : "Discovering and running"}</h2></div><div className="run-actions">{operation.run_id && <Link className="button primary-link" href={`/runs/${operation.run_id}`}>Open run</Link>}{["FAILED", "COMPLETED"].includes(operation.status) && <Button type="button" className="button-secondary" onClick={startAnother}>Create another journey</Button>}</div></div>
       {operation.error_message && <p className="form-error" role="alert">{operation.error_message}</p>}
-      <div className="journey-activity-stack"><RunActivity operationId={operation.id}/>{operation.run_id && <RunActivity runId={operation.run_id}/>}</div>
+      <LiveRunProgress operationEvents={operationFeed.events} runEvents={runFeed.events} runStatus={run?.status}/>
+      {operationFeed.error && <p className="form-error" role="alert">{operationFeed.error}</p>}
+      {runFeed.error && <p className="form-error" role="alert">{runFeed.error}</p>}
+      <div className="journey-activity-stack"><RunActivity operationId={operation.id} suppliedEvents={operationFeed.events}/>{operation.run_id && <RunActivity runId={operation.run_id} suppliedEvents={runFeed.events}/>}</div>
     </Card>}
     <CreateProjectDialog open={projectDialog} onClose={() => setProjectDialog(false)} onCreated={createdProject}/>
   </div>;
