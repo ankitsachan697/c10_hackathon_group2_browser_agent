@@ -9,7 +9,7 @@ from backend.n8n_client import N8nClient
 import test_suite_manager
 
 
-def test_operational_settings_are_absent_until_explicitly_configured(monkeypatch):
+def test_operational_settings_use_tracked_non_secret_defaults(monkeypatch):
     for name in (
         "RUNNER_TIMEOUT_SECONDS",
         "PLAYWRIGHT_CDP_ENDPOINT",
@@ -32,20 +32,20 @@ def test_operational_settings_are_absent_until_explicitly_configured(monkeypatch
 
     settings = Settings.from_env()
 
-    assert settings.runner_timeout_seconds is None
+    assert settings.runner_timeout_seconds == 60
     assert settings.playwright_cdp_endpoint is None
-    assert settings.playwright_cdp_timeout_seconds is None
-    assert settings.visual_diff_threshold is None
-    assert settings.visual_tolerance_percent is None
-    assert settings.scheduler_timezone is None
+    assert settings.playwright_cdp_timeout_seconds == 30
+    assert settings.visual_diff_threshold == 0.1
+    assert settings.visual_tolerance_percent == 0.5
+    assert settings.scheduler_timezone == "Asia/Kolkata"
     assert settings.n8n_model is None
-    assert settings.n8n_max_tokens is None
-    assert settings.n8n_temperature is None
-    assert settings.n8n_timeout_seconds is None
-    assert settings.n8n_discovery_agent_id is None
-    assert settings.n8n_repair_agent_id is None
-    assert settings.enable_n8n_generation is False
-    assert settings.enable_n8n_repair is False
+    assert settings.n8n_max_tokens == 2000
+    assert settings.n8n_temperature == 0.1
+    assert settings.n8n_timeout_seconds == 30
+    assert settings.n8n_discovery_agent_id == "QEzE1lGs9WbTU82H"
+    assert settings.n8n_repair_agent_id == "p3Sh9BmTzLMC0f8A"
+    assert settings.enable_n8n_generation is True
+    assert settings.enable_n8n_repair is True
     assert settings.enable_local_repair is False
 
 

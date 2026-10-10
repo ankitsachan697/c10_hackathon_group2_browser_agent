@@ -1,0 +1,31 @@
+{
+  "product": {
+    "name": "Outskill Browser Automation Studio"
+  },
+  "backend": {
+    "internalUrl": "http://127.0.0.1:8000"
+  },
+  "runner": {
+    "timeoutSeconds": 60,
+    "cdpTimeoutSeconds": 30
+  },
+  "scheduler": {
+    "timezone": "Asia/Kolkata"
+  },
+  "visual": {
+    "diffThreshold": 0.1,
+    "tolerancePercent": 0.5
+  },
+  "n8n": {
+    "mcpUrl": "https://outskilltraining.app.n8n.cloud/mcp-server/http",
+    "timeoutSeconds": 30,
+    "discoveryAgentId": "QEzE1lGs9WbTU82H",
+    "repairAgentId": "p3Sh9BmTzLMC0f8A",
+    "visualAgentId": "bS5GQjs2LrNHrJZH",
+    "maxTokens": 2000,
+    "temperature": 0.1,
+    "generationEnabled": true,
+    "repairEnabled": true,
+    "localRepairEnabled": false
+  }
+}
