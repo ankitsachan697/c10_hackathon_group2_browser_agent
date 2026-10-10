@@ -76,6 +76,10 @@ CREATE TABLE IF NOT EXISTS agent_invocations (
   purpose TEXT NOT NULL, status TEXT NOT NULL, duration_ms INTEGER, usage_json TEXT,
   error_code TEXT, created_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS visual_reviews (
+  run_id TEXT PRIMARY KEY, payload_json TEXT NOT NULL, created_at TEXT NOT NULL,
+  FOREIGN KEY(run_id) REFERENCES runs(id) ON DELETE CASCADE
+);
 """
 
 
@@ -97,8 +101,8 @@ class Database:
             if "credential_ciphertext" not in journey_columns:
                 connection.execute("ALTER TABLE journeys ADD COLUMN credential_ciphertext TEXT")
             connection.execute(
-                "INSERT INTO schema_meta(key,value) VALUES ('schema_version','3') "
-                "ON CONFLICT(key) DO UPDATE SET value='3'"
+                "INSERT INTO schema_meta(key,value) VALUES ('schema_version','4') "
+                "ON CONFLICT(key) DO UPDATE SET value='4'"
             )
             schedule_fk = next(
                 (row for row in connection.execute("PRAGMA foreign_key_list(runs)") if row[3] == "schedule_id"),

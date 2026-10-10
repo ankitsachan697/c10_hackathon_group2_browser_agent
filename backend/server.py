@@ -36,6 +36,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from config import Settings
 from runner import PlaywrightRunner
 from visual_diff import compare_images
+from visual_review import VisualReview
 from n8n_client import N8nClient
 from test_suite_manager import suite_manager
 from failure_context import build_failure_packet
@@ -106,7 +107,9 @@ except CredentialVaultError:
     credential_vault = None
 if settings.runner_timeout_seconds is not None:
     run_orchestrator = RunOrchestrator(
-        domain_database, runner, n8n_client, settings.runner_timeout_seconds, credential_vault=credential_vault
+        domain_database, runner, n8n_client, settings.runner_timeout_seconds, credential_vault=credential_vault,
+        visual_review=VisualReview(domain_database, settings.artifacts_root, n8n_client,
+                                   settings.visual_diff_threshold, settings.visual_tolerance_percent),
     )
     schedule_service = ScheduleService(domain_database, run_orchestrator, APSchedulerAdapter())
 else:

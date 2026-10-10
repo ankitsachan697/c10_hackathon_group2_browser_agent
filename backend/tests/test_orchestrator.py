@@ -98,6 +98,24 @@ async def test_saved_run_persists_real_actions_and_headed_choice_without_discove
 
 
 @pytest.mark.asyncio
+async def test_visual_agent_failure_keeps_functional_pass(domain):
+    database, _, journey = domain
+    class FailedVisual:
+        def review(self, *args, **kwargs):
+            return {"status": "MATCH", "agent_status": "ERROR", "agent_error_code": "AGENT_UNAVAILABLE"}
+
+    run = await RunOrchestrator(database, FakeRunner([passing()]), FakeAgents(), 30,
+                                visual_review=FailedVisual()).run_journey(journey["id"], TriggerSource.ON_DEMAND)
+    events = EventStore(database).list_after("run", run["id"], 0)
+    assert run["status"] == RunStatus.PASSED
+    assert run["visual_outcome"] == "MATCH"
+    assert any(event["kind"] == "visual.finished" and event["payload"]["agent_status"] == "ERROR" for event in events)
+    with database.connect() as connection:
+        visual = connection.execute("SELECT payload_json FROM visual_reviews WHERE run_id=?", (run["id"],)).fetchone()
+    assert visual is not None
+
+
+@pytest.mark.asyncio
 async def test_project_run_executes_each_saved_journey(domain):
     database, project, _ = domain
     JourneyRepository(database).create({"project_id": project["id"], "name": "Second", "target_url": "https://app.invalid/two", "script": "print('second')"})

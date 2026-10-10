@@ -21,6 +21,7 @@ try:
     from .redaction import SensitiveDataRedactor
     from .event_store import EventStore
     from .runner import validate_browser_script
+    from .visual_review import VisualReview
 except ImportError:
     from database import Database
     from failure_context import build_failure_packet, classify_failure
@@ -29,6 +30,7 @@ except ImportError:
     from redaction import SensitiveDataRedactor
     from event_store import EventStore
     from runner import validate_browser_script
+    from visual_review import VisualReview
 
 
 class RunOverlapError(RuntimeError):
@@ -36,7 +38,8 @@ class RunOverlapError(RuntimeError):
 
 
 class RunOrchestrator:
-    def __init__(self, database: Database, runner: Any, agents: Any, timeout_seconds: int, credential_vault: Any = None):
+    def __init__(self, database: Database, runner: Any, agents: Any, timeout_seconds: int, credential_vault: Any = None,
+                 visual_review: VisualReview | None = None):
         self.database = database
         self.runner = runner
         self.agents = agents
@@ -46,6 +49,7 @@ class RunOrchestrator:
         self.artifacts = ArtifactRepository(database)
         self.credential_vault = credential_vault
         self.events = EventStore(database)
+        self.visual_review = visual_review
         self._active: set[str] = set()
         self._guard = asyncio.Lock()
 
@@ -187,6 +191,29 @@ class RunOrchestrator:
             def on_action(action: dict[str, Any]) -> None:
                 emit("playwright", f"action.{action['phase']}", {"action": action["action"], "attempt": 1})
 
+            async def complete(result: dict[str, Any], changes: dict[str, Any]) -> dict[str, Any]:
+                if self.visual_review:
+                    emit("visual", "visual.started", {"attempt": changes.get("attempt_count", 1)})
+                    try:
+                        run_dir = Path(result.get("run_dir") or "")
+                        screenshots = [str(run_dir / name) for name in result.get("screenshots", [])
+                                       if isinstance(name, str) and Path(name).name == name]
+                        visual = await asyncio.to_thread(
+                            self.visual_review.review, journey_id, run["id"], screenshots,
+                            passed=changes["status"] in {RunStatus.PASSED.value, RunStatus.PASSED_AFTER_REPAIR.value},
+                        )
+                    except Exception as error:
+                        visual = {"status": "ERROR", "reason": type(error).__name__}
+                    with self.database.transaction() as connection:
+                        connection.execute(
+                            "INSERT OR REPLACE INTO visual_reviews(run_id,payload_json,created_at) VALUES (?,?,?)",
+                            (run["id"], json.dumps(visual), self._now()),
+                        )
+                    changes["visual_outcome"] = visual["status"]
+                    emit("visual", "visual.finished", {key: visual[key] for key in
+                         ("status", "mismatch_percentage", "agent_status", "agent_id") if key in visual})
+                return self._finish(run["id"], changes)
+
             try:
                 first = await self.runner.execute_script(
                     script_code=script, timeout_seconds=self.timeout_seconds,
@@ -203,12 +230,12 @@ class RunOrchestrator:
             self._record_attempt(run["id"], 1, first, execution_secrets)
             emit("system", "run.attempt_finished", {"attempt": 1, "passed": bool(first.get("passed"))})
             if first.get("passed"):
-                return self._finish(run["id"], {"status": RunStatus.PASSED.value, "attempt_count": 1})
+                return await complete(first, {"status": RunStatus.PASSED.value, "attempt_count": 1})
 
             decision = classify_failure(first)
             if not decision.eligible:
                 emit("system", "repair.skipped", {"category": decision.category, "reason": decision.reason})
-                return self._finish(run["id"], {
+                return await complete(first, {
                     "status": RunStatus.NEEDS_ATTENTION.value,
                     "attempt_count": 1,
                     "final_decision": decision.reason,
@@ -228,7 +255,7 @@ class RunOrchestrator:
                 error_code = str(getattr(error, "code", type(error).__name__))
                 self._record_agent_invocation(run["id"], configured_agent_id, "FAILED", int((time.monotonic() - repair_started) * 1000), error_code)
                 emit("agent", "repair.failed", {"agent_id": configured_agent_id, "category": decision.category, "error_code": error_code})
-                return self._finish(run["id"], {
+                return await complete(first, {
                     "status": RunStatus.NEEDS_ATTENTION.value,
                     "attempt_count": 1,
                     "final_decision": f"Repair service unavailable: {type(error).__name__}",
@@ -236,7 +263,7 @@ class RunOrchestrator:
             if not isinstance(repair, dict) or not isinstance(repair.get("repaired_script"), str) or not repair["repaired_script"].strip():
                 self._record_agent_invocation(run["id"], configured_agent_id, "FAILED", int((time.monotonic() - repair_started) * 1000), "AGENT_RESPONSE_INVALID")
                 emit("agent", "repair.failed", {"agent_id": configured_agent_id, "category": decision.category, "error_code": "AGENT_RESPONSE_INVALID"})
-                return self._finish(run["id"], {
+                return await complete(first, {
                     "status": RunStatus.NEEDS_ATTENTION.value,
                     "attempt_count": 1,
                     "final_decision": "Repair response was invalid",
@@ -246,7 +273,7 @@ class RunOrchestrator:
             except (ValueError, SyntaxError):
                 self._record_agent_invocation(run["id"], configured_agent_id, "FAILED", int((time.monotonic() - repair_started) * 1000), "UNSAFE_REPAIR_SCRIPT")
                 emit("agent", "repair.failed", {"agent_id": configured_agent_id, "category": decision.category, "error_code": "UNSAFE_REPAIR_SCRIPT"})
-                return self._finish(run["id"], {"status": RunStatus.NEEDS_ATTENTION.value, "attempt_count": 1, "final_decision": "Repair script did not pass validation"})
+                return await complete(first, {"status": RunStatus.NEEDS_ATTENTION.value, "attempt_count": 1, "final_decision": "Repair script did not pass validation"})
 
             agent_id = str(repair.get("agent_id") or configured_agent_id)
             self._record_agent_invocation(run["id"], agent_id, "SUCCEEDED", int((time.monotonic() - repair_started) * 1000), usage=repair.get("usage"))
@@ -270,14 +297,14 @@ class RunOrchestrator:
                     on_log=on_log, on_action=on_retry_action,
                 )
             except Exception as error:
-                return self._finish(run["id"], {
+                return await complete(first, {
                     "status": RunStatus.NEEDS_ATTENTION.value,
                     "attempt_count": 1,
                     "final_decision": f"Repair retry worker failed: {type(error).__name__}",
                 })
             self._record_attempt(run["id"], 2, second, execution_secrets)
             emit("system", "run.attempt_finished", {"attempt": 2, "passed": bool(second.get("passed"))})
-            return self._finish(run["id"], {
+            return await complete(second, {
                 "status": (RunStatus.PASSED_AFTER_REPAIR.value if second.get("passed") else RunStatus.NEEDS_ATTENTION.value),
                 "attempt_count": 2,
                 "final_decision": "Verified repaired script" if second.get("passed") else "Automatic retry failed",

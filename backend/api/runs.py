@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
+import json
 
 from .context import AppServices, error, ok, services
 from ..models import TriggerSource
@@ -33,6 +34,8 @@ def get_run(run_id: str, svc: AppServices = Depends(services)):
         value["attempts"] = [dict(row) for row in connection.execute(
             "SELECT * FROM run_attempts WHERE run_id = ? ORDER BY attempt_number", (run_id,)
         )]
+        visual = connection.execute("SELECT payload_json FROM visual_reviews WHERE run_id=?", (run_id,)).fetchone()
+        value["visual_review"] = json.loads(visual[0]) if visual else None
     value["artifacts"] = svc.artifacts.repository.list_for_run(run_id)
     return ok(value)
 
