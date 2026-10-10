@@ -23,8 +23,10 @@ from pathlib import Path
 
 try:
     from .redaction import SensitiveDataRedactor
+    from .action_events import MARKER, instrument_script, insert_after_future_imports
 except ImportError:
     from redaction import SensitiveDataRedactor
+    from action_events import MARKER, instrument_script, insert_after_future_imports
 
 
 SecretRedactor = SensitiveDataRedactor
@@ -85,6 +87,7 @@ class PlaywrightRunner:
         secrets: Optional[List[str]] = None,
         timeout_seconds: Optional[int] = None,
         on_log: Optional[Callable[[Dict[str, Any]], None]] = None,
+        on_action: Optional[Callable[[Dict[str, Any]], None]] = None,
         headed: bool = False,
         execution_id: str | None = None,
     ) -> Dict[str, Any]:
@@ -131,7 +134,7 @@ class PlaywrightRunner:
         
         # Inject standard runner helper or wrap script if needed
         worker_run_dir = "/work" if self.container_image else run_dir
-        wrapped_code = self._wrap_script(script_code, worker_run_dir, headed=headed)
+        wrapped_code = self._wrap_script(instrument_script(script_code), worker_run_dir, headed=headed)
         with open(script_path, "w", encoding="utf-8") as f:
             f.write(wrapped_code)
 
@@ -165,6 +168,15 @@ class PlaywrightRunner:
                         stderr_lines.append(decoded)
                         emit_log("WARN" if "Deprecation" in decoded else "ERROR", decoded)
                     else:
+                        if decoded.startswith(MARKER):
+                            try:
+                                action_event = json.loads(decoded[len(MARKER):])
+                                if (on_action and action_event.get("action") in {"navigate", "click", "fill", "press", "check", "select_option", "screenshot", "expect"}
+                                        and action_event.get("phase") in {"started", "finished", "failed"}):
+                                    on_action(action_event)
+                            except (ValueError, TypeError, AttributeError):
+                                pass
+                            continue
                         stdout_lines.append(decoded)
                         emit_log("INFO", decoded)
 
@@ -394,4 +406,4 @@ def _connect_or_launch(browser_type, *args, **kwargs):
         return browser_type.connect_over_cdp(endpoint, timeout=timeout_ms)
     return browser_type.launch(*args, **kwargs)
 """
-        return header + "\n" + script
+        return insert_after_future_imports(header, script)

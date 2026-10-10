@@ -57,6 +57,19 @@ def test_execution_environment_does_not_inherit_backend_secrets(tmp_path, monkey
 
 
 @pytest.mark.asyncio
+async def test_runner_emits_action_events_without_fill_value(tmp_path):
+    runner = PlaywrightRunner(tmp_path, allow_unsafe_local_execution=True)
+    actions = []
+    script = "class Page:\n    def fill(self, value): return True\npage = Page()\npage.fill('Password123')"
+
+    result = await runner.execute_script(script, secrets=["Password123"], on_action=actions.append, timeout_seconds=10)
+
+    assert result["passed"] is True
+    assert [event["phase"] for event in actions] == ["started", "finished"]
+    assert "Password123" not in str(actions)
+
+
+@pytest.mark.asyncio
 async def test_runner_redacts_username_and_password_from_all_output(tmp_path):
     runner = PlaywrightRunner(tmp_path, allow_unsafe_local_execution=True)
     script = "print('student'); import sys; print('Password123', file=sys.stderr)"

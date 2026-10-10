@@ -18,12 +18,14 @@ try:
     from .models import RunStatus, TriggerSource
     from .repositories import ArtifactRepository, JourneyRepository, RunRepository
     from .redaction import SensitiveDataRedactor
+    from .event_store import EventStore
 except ImportError:
     from database import Database
     from failure_context import build_failure_packet, classify_failure
     from models import RunStatus, TriggerSource
     from repositories import ArtifactRepository, JourneyRepository, RunRepository
     from redaction import SensitiveDataRedactor
+    from event_store import EventStore
 
 
 class RunOverlapError(RuntimeError):
@@ -40,6 +42,7 @@ class RunOrchestrator:
         self.runs = RunRepository(database)
         self.artifacts = ArtifactRepository(database)
         self.credential_vault = credential_vault
+        self.events = EventStore(database)
         self._active: set[str] = set()
         self._guard = asyncio.Lock()
 
@@ -118,6 +121,7 @@ class RunOrchestrator:
         schedule_id: str | None = None,
         headed: bool = False,
         on_run_created: Any = None,
+        event_sink: Any = None,
     ) -> dict[str, Any]:
         journey = self.journeys.get_with_credentials(journey_id)
         if not journey:
@@ -137,10 +141,17 @@ class RunOrchestrator:
                 "trigger_source": trigger_value, "status": RunStatus.QUEUED.value,
                 "script_snapshot": script, "script_version": version,
             })
+            execution_secrets = list(secrets)
+
+            def emit(source: str, kind: str, payload: dict[str, Any]) -> None:
+                event = self.events.append("run", run["id"], source, kind, payload, secrets=execution_secrets)
+                if event_sink:
+                    event_sink(event)
+
+            emit("system", "run.queued", {"trigger": trigger_value, "headed": headed})
             if on_run_created:
                 on_run_created(run)
             env_vars: dict[str, str] = {}
-            execution_secrets = list(secrets)
             if journey.get("credential_ciphertext"):
                 if not self.credential_vault:
                     return self._finish(run["id"], {"status": RunStatus.NEEDS_ATTENTION.value, "final_decision": "Credential vault unavailable"})
@@ -151,12 +162,21 @@ class RunOrchestrator:
                 env_vars = {"AUTH_USERNAME": username, "AUTH_PASSWORD": password}
                 execution_secrets.extend((username, password))
             self.runs.update(run["id"], {"status": RunStatus.RUNNING.value, "started_at": self._now()})
+            emit("system", "run.started", {"attempt": 1})
+
+            def on_log(log: dict[str, Any]) -> None:
+                emit("playwright", "log", {"level": log.get("level", "INFO"), "message": str(log.get("message", ""))[:3000]})
+
+            def on_action(action: dict[str, Any]) -> None:
+                emit("playwright", f"action.{action['phase']}", {"action": action["action"], "attempt": 1})
+
             try:
                 first = await self.runner.execute_script(
                     script_code=script, timeout_seconds=self.timeout_seconds,
                     execution_id=f"{run['id']}/attempt-1",
                     env_vars=env_vars, secrets=execution_secrets,
                     headed=headed,
+                    on_log=on_log, on_action=on_action,
                 )
             except Exception as error:
                 return self._finish(run["id"], {
@@ -164,6 +184,7 @@ class RunOrchestrator:
                     "final_decision": f"Execution worker failed: {type(error).__name__}",
                 })
             self._record_attempt(run["id"], 1, first, execution_secrets)
+            emit("system", "run.attempt_finished", {"attempt": 1, "passed": bool(first.get("passed"))})
             if first.get("passed"):
                 return self._finish(run["id"], {"status": RunStatus.PASSED.value, "attempt_count": 1})
 

@@ -4,6 +4,7 @@ import base64
 import pytest
 
 from backend.database import Database
+from backend.event_store import EventStore
 from backend.credential_vault import CredentialVault
 from backend.models import RunStatus, TriggerSource
 from backend.orchestrator import RunOrchestrator
@@ -70,6 +71,30 @@ async def test_all_operational_triggers_execute_saved_script_without_generation(
     assert runner.scripts == ["print('saved')"]
     assert agents.generation_calls == 0
     assert agents.repair_calls == []
+
+
+@pytest.mark.asyncio
+async def test_saved_run_persists_real_actions_and_headed_choice_without_discovery(domain):
+    database, _, journey = domain
+
+    class EventRunner(FakeRunner):
+        async def execute_script(self, **kwargs):
+            self.calls.append(kwargs)
+            kwargs["on_action"]({"action": "fill", "phase": "started"})
+            kwargs["on_action"]({"action": "fill", "phase": "finished"})
+            kwargs["on_log"]({"level": "INFO", "message": "password=Password123"})
+            return passing()
+
+    runner, agents = EventRunner([passing()]), FakeAgents()
+    run = await RunOrchestrator(database, runner, agents, 30).run_journey(
+        journey["id"], TriggerSource.ON_DEMAND, secrets=["Password123"], headed=True
+    )
+    events = EventStore(database).list_after("run", run["id"], 0)
+
+    assert runner.calls[0]["headed"] is True
+    assert [event["kind"] for event in events].count("action.started") == 1
+    assert not any(event["kind"].startswith("generation") for event in events)
+    assert "Password123" not in str(events)
 
 
 @pytest.mark.asyncio
