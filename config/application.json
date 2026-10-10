@@ -8,7 +8,8 @@
   "runner": {
     "timeoutSeconds": 60,
     "cdpTimeoutSeconds": 30,
-    "containerImage": "outskill-browser-runner:local"
+    "containerImage": "outskill-browser-runner:local",
+    "browserLocation": "local"
   },
   "scheduler": {
     "timezone": "Asia/Kolkata"

@@ -113,21 +113,35 @@ async def run(server: str, device_file: Path) -> None:
     headers = {"Authorization": f"Bearer {device['credential']}"}
     seen: set[str] = set()
     async with httpx.AsyncClient(base_url=server, timeout=10) as client:
-        while True:
-            heartbeat = await client.post("/api/companions/heartbeat", json={"device_id": device["id"]}, headers=headers)
-            heartbeat.raise_for_status()
-            response = await client.get(f"/api/companions/{device['id']}/sessions", headers=headers)
-            response.raise_for_status()
-            for offer in response.json()["data"]:
-                session_id = offer.get("session_id")
-                if not session_id or session_id in seen:
-                    continue
-                seen.add(session_id)
-                answer = await asyncio.to_thread(input, f"Open local Chromium for run {offer.get('run_id')}? [y/N] ")
-                if answer.strip().lower() not in {"y", "yes"}:
-                    continue
-                await _approved_session(server, device, session_id)
-            await asyncio.sleep(2)
+        async def keep_online():
+            while True:
+                heartbeat = await client.post("/api/companions/heartbeat", json={"device_id": device["id"]}, headers=headers)
+                heartbeat.raise_for_status()
+                await asyncio.sleep(10)
+
+        heartbeat_task = asyncio.create_task(keep_online())
+        try:
+            while True:
+                if heartbeat_task.done():
+                    heartbeat_task.result()
+                response = await client.get(f"/api/companions/{device['id']}/sessions", headers=headers)
+                response.raise_for_status()
+                for offer in response.json()["data"]:
+                    session_id = offer.get("session_id")
+                    if not session_id or session_id in seen:
+                        continue
+                    seen.add(session_id)
+                    answer = await asyncio.to_thread(input, f"Open local Chromium for run {offer.get('run_id')}? [y/N] ")
+                    if answer.strip().lower() not in {"y", "yes"}:
+                        continue
+                    try:
+                        await _approved_session(server, device, session_id)
+                    except Exception as failure:
+                        print(f"Browser session ended: {type(failure).__name__}")
+                await asyncio.sleep(2)
+        finally:
+            heartbeat_task.cancel()
+            await asyncio.gather(heartbeat_task, return_exceptions=True)
 
 
 async def pair(server: str, code: str, device_name: str, device_file: Path) -> None:

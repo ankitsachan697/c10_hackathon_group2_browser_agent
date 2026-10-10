@@ -98,6 +98,70 @@ async def test_saved_run_persists_real_actions_and_headed_choice_without_discove
 
 
 @pytest.mark.asyncio
+async def test_hosted_headed_requires_online_companion_and_never_runs_server_browser(domain):
+    database, _, journey = domain
+    runner = FakeRunner([passing()])
+    class OfflineRegistry:
+        def list_online(self): return []
+    orchestrator = RunOrchestrator(database, runner, FakeAgents(), 30, browser_location="hosted",
+                                   companion_registry=OfflineRegistry())
+    run = await orchestrator.run_journey(journey["id"], TriggerSource.ON_DEMAND, headed=True, companion_id="device-1")
+    assert run["status"] == RunStatus.NEEDS_ATTENTION
+    assert runner.calls == []
+    assert any(event["kind"] == "browser.unavailable" for event in EventStore(database).list_after("run", run["id"], 0))
+
+
+@pytest.mark.asyncio
+async def test_hosted_headed_uses_scoped_relay_endpoint(domain):
+    database, _, journey = domain
+    runner = FakeRunner([passing()])
+    class OnlineRegistry:
+        def list_online(self): return [{"id": "device-1", "name": "Laptop", "online": True}]
+    class Session:
+        id = "relay-1"
+        runner_secret = "scoped-secret"
+    class FakeRelay:
+        def __init__(self): self.closed = []
+        def create_session(self, device_id, run_id):
+            assert device_id == "device-1" and run_id
+            return Session()
+        async def wait_companion(self, session_id):
+            assert session_id == "relay-1"
+        async def close(self, session_id): self.closed.append(session_id)
+    relay = FakeRelay()
+    orchestrator = RunOrchestrator(database, runner, FakeAgents(), 30, browser_location="hosted",
+                                   companion_registry=OnlineRegistry(), cdp_relay=relay,
+                                   relay_base_url="wss://backend.example.test")
+    run = await orchestrator.run_journey(journey["id"], TriggerSource.ON_DEMAND, headed=True, companion_id="device-1")
+    assert run["status"] == RunStatus.PASSED
+    assert runner.calls[0]["cdp_endpoint"] == "wss://backend.example.test/api/companions/relay/relay-1/runner"
+    assert runner.calls[0]["cdp_runner_secret"] == "scoped-secret"
+    assert relay.closed == ["relay-1"]
+
+
+@pytest.mark.asyncio
+async def test_hosted_browser_approval_timeout_needs_attention_without_fallback(domain):
+    database, _, journey = domain
+    runner = FakeRunner([passing()])
+    class OnlineRegistry:
+        def list_online(self): return [{"id": "device-1", "name": "Laptop", "online": True}]
+    class Relay:
+        closed = []
+        def create_session(self, device_id, run_id):
+            return type("Session", (), {"id": "relay-1", "runner_secret": "secret"})()
+        async def wait_companion(self, session_id): raise TimeoutError("approval timed out")
+        async def close(self, session_id): self.closed.append(session_id)
+    relay = Relay()
+    run = await RunOrchestrator(database, runner, FakeAgents(), 30, browser_location="hosted",
+                                companion_registry=OnlineRegistry(), cdp_relay=relay,
+                                relay_base_url="wss://backend.example.test").run_journey(
+                                    journey["id"], TriggerSource.ON_DEMAND, headed=True, companion_id="device-1")
+    assert run["status"] == RunStatus.NEEDS_ATTENTION
+    assert runner.calls == []
+    assert relay.closed == ["relay-1"]
+
+
+@pytest.mark.asyncio
 async def test_visual_agent_failure_keeps_functional_pass(domain):
     database, _, journey = domain
     class FailedVisual:

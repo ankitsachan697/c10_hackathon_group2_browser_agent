@@ -47,6 +47,8 @@ class GenerationCoordinator:
             raise ValueError("Idempotency-Key must be 1–200 characters")
         if request.get("browser_mode", "headless") not in {"headless", "headed"}:
             raise ValueError("browser_mode must be headless or headed")
+        if request.get("companion_id") and request.get("browser_mode") != "headed":
+            raise ValueError("companion_id requires headed browser mode")
         if not ProjectRepository(self.database).get(str(request.get("project_id", ""))):
             raise ValueError("Project not found")
         username, password = request.get("username"), request.get("password")
@@ -127,6 +129,7 @@ class GenerationCoordinator:
             await self.orchestrator.run_journey(
                 journey["id"], TriggerSource.ON_DEMAND,
                 headed=request.get("browser_mode") == "headed", on_run_created=on_run_created,
+                companion_id=request.get("companion_id"),
             )
             with self.database.transaction() as connection:
                 connection.execute("UPDATE generation_operations SET status='COMPLETED',updated_at=? WHERE id=?", (self._now(), operation_id))

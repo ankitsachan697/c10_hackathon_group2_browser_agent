@@ -90,6 +90,8 @@ class PlaywrightRunner:
         on_action: Optional[Callable[[Dict[str, Any]], None]] = None,
         headed: bool = False,
         execution_id: str | None = None,
+        cdp_endpoint: str | None = None,
+        cdp_runner_secret: str | None = None,
     ) -> Dict[str, Any]:
         """
         Executes a Python Playwright script.
@@ -101,7 +103,7 @@ class PlaywrightRunner:
         if self.container_image:
             os.chmod(run_dir, 0o777)
 
-        redactor = SecretRedactor([*(secrets_to_mask or []), *(secrets or [])])
+        redactor = SecretRedactor([*(secrets_to_mask or []), *(secrets or []), *([cdp_runner_secret] if cdp_runner_secret else [])])
         if env_vars:
             for k, v in env_vars.items():
                 if any(kw in k.lower() for kw in ["pass", "secret", "token", "key"]):
@@ -139,7 +141,8 @@ class PlaywrightRunner:
             f.write(wrapped_code)
 
         # Prepare execution environment
-        exec_env = self._execution_environment(env_vars, worker_run_dir)
+        exec_env = self._execution_environment(env_vars, worker_run_dir, cdp_endpoint=cdp_endpoint,
+                                               cdp_runner_secret=cdp_runner_secret)
 
         emit_log("INFO", f"⚡ Launching Chromium browser runner (headed={headed})...")
 
@@ -280,7 +283,8 @@ class PlaywrightRunner:
             "logs": logs,
         }
 
-    def _execution_environment(self, env_vars: Optional[Dict[str, str]], run_dir: str | os.PathLike[str]) -> Dict[str, str]:
+    def _execution_environment(self, env_vars: Optional[Dict[str, str]], run_dir: str | os.PathLike[str],
+                               cdp_endpoint: str | None = None, cdp_runner_secret: str | None = None) -> Dict[str, str]:
         """Build a minimal worker environment without backend credentials."""
         allowed_host_keys = (
             "PATH", "LANG", "LC_ALL", "TMPDIR", "TEMP", "TMP",
@@ -289,11 +293,14 @@ class PlaywrightRunner:
         environment = {key: os.environ[key] for key in allowed_host_keys if key in os.environ}
         environment["ARTIFACTS_DIR"] = str(run_dir)
         environment["PYTHONUNBUFFERED"] = "1"
-        if self.cdp_endpoint:
-            environment["PLAYWRIGHT_CDP_ENDPOINT"] = self.cdp_endpoint
-            environment["PLAYWRIGHT_CDP_TIMEOUT_SECONDS"] = str(self.cdp_timeout_seconds or 30)
         for key, value in (env_vars or {}).items():
             environment[key] = str(value)
+        endpoint = cdp_endpoint or self.cdp_endpoint
+        if endpoint:
+            environment["PLAYWRIGHT_CDP_ENDPOINT"] = endpoint
+            environment["PLAYWRIGHT_CDP_TIMEOUT_SECONDS"] = str(self.cdp_timeout_seconds or 30)
+        if cdp_runner_secret:
+            environment["PLAYWRIGHT_CDP_RUNNER_SECRET"] = cdp_runner_secret
         return environment
 
     @staticmethod
@@ -316,7 +323,7 @@ class PlaywrightRunner:
                 "--workdir=/work",
             ]
             for key in sorted(environment):
-                if key in {"AUTH_USERNAME", "AUTH_PASSWORD", "ARTIFACTS_DIR", "PLAYWRIGHT_CDP_ENDPOINT", "PLAYWRIGHT_CDP_TIMEOUT_SECONDS", "PYTHONUNBUFFERED"}:
+                if key in {"AUTH_USERNAME", "AUTH_PASSWORD", "ARTIFACTS_DIR", "PLAYWRIGHT_CDP_ENDPOINT", "PLAYWRIGHT_CDP_TIMEOUT_SECONDS", "PLAYWRIGHT_CDP_RUNNER_SECRET", "PYTHONUNBUFFERED"}:
                     command.extend(["--env", key])
             command.extend([self.container_image, "python", "/work/test_script.py"])
             return command
@@ -403,7 +410,9 @@ def _connect_or_launch(browser_type, *args, **kwargs):
     endpoint = os.environ.get("PLAYWRIGHT_CDP_ENDPOINT")
     if endpoint:
         timeout_ms = int(os.environ.get("PLAYWRIGHT_CDP_TIMEOUT_SECONDS", "30")) * 1000
-        return browser_type.connect_over_cdp(endpoint, timeout=timeout_ms)
+        secret = os.environ.get("PLAYWRIGHT_CDP_RUNNER_SECRET")
+        headers = {{"Authorization": f"Bearer {{secret}}"}} if secret else None
+        return browser_type.connect_over_cdp(endpoint, headers=headers, timeout=timeout_ms)
     return browser_type.launch(*args, **kwargs)
 """
         return insert_after_future_imports(header, script)

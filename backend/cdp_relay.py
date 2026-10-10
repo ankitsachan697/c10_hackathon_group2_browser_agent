@@ -24,6 +24,7 @@ class RelaySession:
     expires_at: float
     companion: Any = None
     runner: Any = None
+    companion_ready: asyncio.Event = field(default_factory=asyncio.Event)
     ready: asyncio.Event = field(default_factory=asyncio.Event)
     closed: asyncio.Event = field(default_factory=asyncio.Event)
 
@@ -59,11 +60,21 @@ class CdpRelay:
                 if item.device_id == device_id and not item.companion and not item.closed.is_set()
                 and item.expires_at > time.monotonic()]
 
+    async def wait_companion(self, session_id: str) -> None:
+        session = self._get(session_id)
+        try:
+            await asyncio.wait_for(session.companion_ready.wait(), timeout=max(0.1, session.expires_at - time.monotonic()))
+        except asyncio.TimeoutError as error:
+            raise RelayError("Local browser approval timed out") from error
+        if session.closed.is_set():
+            raise RelayError("Local browser disconnected before the run")
+
     async def attach_companion(self, session_id: str, device_id: str, websocket: Any) -> None:
         session = self._get(session_id)
         if session.device_id != device_id or session.companion is not None:
             raise RelayError("Companion is not authorized for this session")
         session.companion = websocket
+        session.companion_ready.set()
         if session.runner:
             session.ready.set()
         await session.closed.wait()

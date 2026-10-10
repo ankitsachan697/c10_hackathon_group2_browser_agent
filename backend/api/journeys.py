@@ -30,6 +30,11 @@ class JourneyCredentials(BaseModel):
     password: str = Field(min_length=1)
 
 
+class JourneyRunRequest(BaseModel):
+    browser_mode: str = "headless"
+    companion_id: str | None = None
+
+
 def _journey(repo, resource_id):
     value = repo.get(resource_id)
     if not value:
@@ -105,9 +110,13 @@ def replace_credentials(journey_id: str, payload: JourneyCredentials, svc: AppSe
 
 
 @router.post("/{journey_id}/run")
-async def run_journey(journey_id: str, svc: AppServices = Depends(services)):
+async def run_journey(journey_id: str, payload: JourneyRunRequest | None = None, svc: AppServices = Depends(services)):
     _journey(JourneyRepository(svc.database), journey_id)
-    return ok(await svc.orchestrator.run_journey(journey_id, TriggerSource.ON_DEMAND))
+    selected = payload or JourneyRunRequest()
+    if selected.browser_mode not in {"headless", "headed"}:
+        raise HTTPException(422, detail=error("INVALID_MODE", "Browser mode must be headless or headed"))
+    return ok(await svc.orchestrator.run_journey(journey_id, TriggerSource.ON_DEMAND,
+                                                 headed=selected.browser_mode == "headed", companion_id=selected.companion_id))
 
 
 @router.delete("/{journey_id}")

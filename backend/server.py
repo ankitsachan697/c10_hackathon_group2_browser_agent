@@ -114,6 +114,8 @@ if settings.runner_timeout_seconds is not None:
         domain_database, runner, n8n_client, settings.runner_timeout_seconds, credential_vault=credential_vault,
         visual_review=VisualReview(domain_database, settings.artifacts_root, n8n_client,
                                    settings.visual_diff_threshold, settings.visual_tolerance_percent),
+        browser_location=settings.runner_browser_location, companion_registry=companion_registry,
+        cdp_relay=cdp_relay, relay_base_url=settings.runner_relay_base_url,
     )
     schedule_service = ScheduleService(domain_database, run_orchestrator, APSchedulerAdapter())
 else:

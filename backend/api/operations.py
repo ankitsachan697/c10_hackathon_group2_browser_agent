@@ -18,6 +18,7 @@ class GenerationRequest(BaseModel):
     username: str | None = None
     password: str | None = None
     browser_mode: str = "headless"
+    companion_id: str | None = None
     offline: bool = False
 
 

@@ -10,7 +10,7 @@ def test_wrapper_routes_chromium_launch_through_configurable_cdp_endpoint(tmp_pa
     )
 
     assert "_connect_or_launch(p.chromium, headless=True)" in wrapped
-    assert "connect_over_cdp(endpoint, timeout=timeout_ms)" in wrapped
+    assert "connect_over_cdp(endpoint, headers=headers, timeout=timeout_ms)" in wrapped
     assert "PLAYWRIGHT_CDP_ENDPOINT" in wrapped
 
 
@@ -54,6 +54,18 @@ def test_execution_environment_does_not_inherit_backend_secrets(tmp_path, monkey
     assert environment["SAFE_VALUE"] == "allowed"
     assert environment["PATH"] == "/usr/bin"
     assert "N8N_BEARER_TOKEN" not in environment
+
+
+def test_scoped_relay_connection_uses_header_secret_and_per_run_endpoint(tmp_path):
+    runner = PlaywrightRunner(tmp_path)
+    environment = runner._execution_environment({}, tmp_path,
+                                                cdp_endpoint="wss://backend.example.test/relay/run-1",
+                                                cdp_runner_secret="scoped-secret")
+    wrapped = runner._wrap_script("print('ready')", str(tmp_path))
+    assert environment["PLAYWRIGHT_CDP_ENDPOINT"] == "wss://backend.example.test/relay/run-1"
+    assert environment["PLAYWRIGHT_CDP_RUNNER_SECRET"] == "scoped-secret"
+    assert 'headers = {"Authorization": f"Bearer {secret}"}' in wrapped
+    assert "scoped-secret" not in wrapped
 
 
 @pytest.mark.asyncio

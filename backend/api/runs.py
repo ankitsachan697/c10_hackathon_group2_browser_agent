@@ -13,6 +13,8 @@ router = APIRouter(prefix="/runs", tags=["runs"])
 
 class RerunRequest(BaseModel):
     mode: str = "current"
+    browser_mode: str = "headless"
+    companion_id: str | None = None
 
 
 @router.get("")
@@ -47,8 +49,12 @@ async def rerun(run_id: str, payload: RerunRequest, svc: AppServices = Depends(s
         raise HTTPException(404, detail=error("NOT_FOUND", "Run not found"))
     if payload.mode not in {"current", "snapshot"}:
         raise HTTPException(422, detail=error("INVALID_MODE", "Mode must be current or snapshot"))
+    if payload.browser_mode not in {"headless", "headed"}:
+        raise HTTPException(422, detail=error("INVALID_MODE", "Browser mode must be headless or headed"))
     trigger = TriggerSource.RERUN_CURRENT if payload.mode == "current" else TriggerSource.RERUN_SNAPSHOT
-    return ok(await svc.orchestrator.run_journey(historic["journey_id"], trigger, script_version=run_id if payload.mode == "snapshot" else None))
+    return ok(await svc.orchestrator.run_journey(historic["journey_id"], trigger,
+              script_version=run_id if payload.mode == "snapshot" else None,
+              headed=payload.browser_mode == "headed", companion_id=payload.companion_id))
 
 
 @router.delete("/{run_id}")

@@ -11,6 +11,7 @@ import uuid
 from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import Path
+from urllib.parse import urlparse
 from typing import Any, Iterable
 
 try:
@@ -39,7 +40,8 @@ class RunOverlapError(RuntimeError):
 
 class RunOrchestrator:
     def __init__(self, database: Database, runner: Any, agents: Any, timeout_seconds: int, credential_vault: Any = None,
-                 visual_review: VisualReview | None = None):
+                 visual_review: VisualReview | None = None, browser_location: str = "local",
+                 companion_registry: Any = None, cdp_relay: Any = None, relay_base_url: str | None = None):
         self.database = database
         self.runner = runner
         self.agents = agents
@@ -50,6 +52,10 @@ class RunOrchestrator:
         self.credential_vault = credential_vault
         self.events = EventStore(database)
         self.visual_review = visual_review
+        self.browser_location = browser_location
+        self.companion_registry = companion_registry
+        self.cdp_relay = cdp_relay
+        self.relay_base_url = relay_base_url
         self._active: set[str] = set()
         self._guard = asyncio.Lock()
 
@@ -141,6 +147,7 @@ class RunOrchestrator:
         secrets: Iterable[str] = (),
         schedule_id: str | None = None,
         headed: bool = False,
+        companion_id: str | None = None,
         on_run_created: Any = None,
         event_sink: Any = None,
     ) -> dict[str, Any]:
@@ -149,6 +156,7 @@ class RunOrchestrator:
             raise KeyError(journey_id)
         scope = f"journey:{journey_id}"
         await self._claim(scope)
+        relay_session_id: str | None = None
         try:
             trigger_value = trigger.value if isinstance(trigger, TriggerSource) else str(trigger)
             script, version = journey["script"], journey["script_version"]
@@ -172,6 +180,32 @@ class RunOrchestrator:
             emit("system", "run.queued", {"trigger": trigger_value, "headed": headed})
             if on_run_created:
                 on_run_created(run)
+            browser_kwargs: dict[str, str] = {}
+            if headed and self.browser_location == "hosted":
+                available = self.companion_registry.list_online() if self.companion_registry else []
+                parsed = urlparse(self.relay_base_url or "")
+                if (not companion_id or companion_id not in {item["id"] for item in available}
+                        or not self.cdp_relay or parsed.scheme not in {"ws", "wss"} or not parsed.netloc
+                        or (parsed.scheme == "ws" and parsed.hostname not in {"localhost", "127.0.0.1", "host.docker.internal"})):
+                    emit("system", "browser.unavailable", {"reason": "No approved local browser is online or relay is not configured"})
+                    return self._finish(run["id"], {"status": RunStatus.NEEDS_ATTENTION.value,
+                                                     "final_decision": "Hosted headed run requires an online paired browser and relay"})
+                try:
+                    relay_session = self.cdp_relay.create_session(companion_id, run["id"])
+                    relay_session_id = relay_session.id
+                    emit("system", "browser.waiting_approval", {"device_id": companion_id})
+                    await self.cdp_relay.wait_companion(relay_session.id)
+                except Exception as error:
+                    emit("system", "browser.unavailable", {"reason": type(error).__name__})
+                    return self._finish(run["id"], {"status": RunStatus.NEEDS_ATTENTION.value,
+                                                     "final_decision": "Local browser did not approve or connect"})
+                browser_kwargs = {
+                    "cdp_endpoint": f"{self.relay_base_url.rstrip('/')}/api/companions/relay/{relay_session.id}/runner",
+                    "cdp_runner_secret": relay_session.runner_secret,
+                }
+                emit("system", "browser.connected", {"device_id": companion_id})
+            else:
+                emit("system", "browser.target", {"location": self.browser_location, "headed": headed})
             env_vars: dict[str, str] = {}
             if journey.get("credential_ciphertext"):
                 if not self.credential_vault:
@@ -232,6 +266,7 @@ class RunOrchestrator:
                     execution_id=f"{run['id']}/attempt-1",
                     env_vars=env_vars, secrets=execution_secrets,
                     headed=headed,
+                    **browser_kwargs,
                     on_log=on_log, on_action=on_action,
                 )
             except Exception as error:
@@ -306,6 +341,7 @@ class RunOrchestrator:
                     execution_id=f"{run['id']}/attempt-2",
                     env_vars=env_vars, secrets=execution_secrets,
                     headed=headed,
+                    **browser_kwargs,
                     on_log=on_log, on_action=on_retry_action,
                 )
             except Exception as error:
@@ -322,6 +358,8 @@ class RunOrchestrator:
                 "final_decision": "Verified repaired script" if second.get("passed") else "Automatic retry failed",
             })
         finally:
+            if relay_session_id and self.cdp_relay:
+                await self.cdp_relay.close(relay_session_id)
             async with self._guard:
                 self._active.discard(scope)
 
