@@ -8,7 +8,7 @@ from backend.event_store import EventStore
 from backend.credential_vault import CredentialVault
 from backend.models import RunStatus, TriggerSource
 from backend.orchestrator import RunOrchestrator
-from backend.repositories import JourneyRepository, ProjectRepository, RunRepository
+from backend.repositories import ArtifactRepository, JourneyRepository, ProjectRepository, RunRepository
 
 
 class FakeRunner:
@@ -113,6 +113,26 @@ async def test_visual_agent_failure_keeps_functional_pass(domain):
     with database.connect() as connection:
         visual = connection.execute("SELECT payload_json FROM visual_reviews WHERE run_id=?", (run["id"],)).fetchone()
     assert visual is not None
+
+
+@pytest.mark.asyncio
+async def test_visual_diff_is_registered_as_run_artifact(domain, tmp_path):
+    database, _, journey = domain
+    diff = tmp_path / "visual_diffs" / "run.png"
+    diff.parent.mkdir()
+    diff.write_bytes(b"png")
+
+    class DiffVisual:
+        artifacts_dir = tmp_path
+        def review(self, *args, **kwargs):
+            return {"status": "DIFFERENCE", "diff_path": str(diff), "mismatch_percentage": 12.0}
+
+    run = await RunOrchestrator(database, FakeRunner([passing()]), FakeAgents(), 30,
+                                visual_review=DiffVisual()).run_journey(journey["id"], TriggerSource.ON_DEMAND)
+    artifacts = ArtifactRepository(database).list_for_run(run["id"])
+    assert len(artifacts) == 1
+    assert artifacts[0]["kind"] == "visual_diff"
+    assert artifacts[0]["storage_path"] == "visual_diffs/run.png"
 
 
 @pytest.mark.asyncio
