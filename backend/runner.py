@@ -69,6 +69,7 @@ class PlaywrightRunner:
         script_code: str,
         env_vars: Optional[Dict[str, str]] = None,
         secrets_to_mask: Optional[List[str]] = None,
+        secrets: Optional[List[str]] = None,
         timeout_seconds: Optional[int] = None,
         on_log: Optional[Callable[[Dict[str, Any]], None]] = None,
         headed: bool = False,
@@ -82,7 +83,7 @@ class PlaywrightRunner:
         run_dir = os.path.join(self.artifacts_dir, run_id)
         os.makedirs(run_dir, exist_ok=True)
 
-        redactor = SecretRedactor(secrets_to_mask)
+        redactor = SecretRedactor([*(secrets_to_mask or []), *(secrets or [])])
         if env_vars:
             for k, v in env_vars.items():
                 if any(kw in k.lower() for kw in ["pass", "secret", "token", "key"]):
@@ -233,7 +234,7 @@ class PlaywrightRunner:
             "dom_excerpt": dom_snapshot[:6000],
             "failed_action": self._extract_failed_action("\n".join(stderr_lines)),
             "locator_evidence": self._extract_locator_evidence("\n".join(stderr_lines)),
-            "stdout": "\n".join(stdout_lines),
+            "stdout": redactor.redact("\n".join(stdout_lines)),
             "stderr": redactor.redact("\n".join(stderr_lines)),
             "logs": logs,
         }

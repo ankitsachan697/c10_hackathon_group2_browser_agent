@@ -1,4 +1,5 @@
 from pathlib import Path
+import base64
 
 import pytest
 from fastapi import FastAPI
@@ -8,21 +9,31 @@ from backend.api import install_api
 from backend.api.context import AppServices
 from backend.artifact_store import ArtifactStore
 from backend.database import Database
+from backend.credential_vault import CredentialVault
 from backend.orchestrator import RunOrchestrator
 from backend.repositories import ArtifactRepository
 from backend.scheduler import ScheduleService
 
 
 class Runner:
+    def __init__(self):
+        self.calls = []
+
     async def execute_script(self, **kwargs):
+        self.calls.append(kwargs)
         return {"passed": True, "status": "PASSED", "stderr": "", "stdout": "", "screenshots": [], "run_id": "runner", "run_dir": "/tmp"}
 
 
 class Agents:
     generation_calls = 0
 
+    def __init__(self):
+        self.generation_calls = 0
+        self.generation_arguments = []
+
     def generate_flow_script(self, **kwargs):
         self.generation_calls += 1
+        self.generation_arguments.append(kwargs)
         return {"python_script": "print('generated')", "discovered_steps": ["open"]}
 
     def diagnose_and_repair(self, packet):
@@ -41,7 +52,9 @@ def api(tmp_path: Path):
     database = Database(tmp_path / "app.db")
     database.initialize()
     agents = Agents()
-    orchestrator = RunOrchestrator(database, Runner(), agents, 10)
+    runner = Runner()
+    vault = CredentialVault(base64.urlsafe_b64encode(b"a" * 32).decode())
+    orchestrator = RunOrchestrator(database, runner, agents, 10, credential_vault=vault)
     scheduler = ScheduleService(database, orchestrator, Adapter())
     services = AppServices(
         database=database,
@@ -49,6 +62,7 @@ def api(tmp_path: Path):
         scheduler=scheduler,
         artifacts=ArtifactStore(tmp_path / "artifacts", tmp_path / "trash", ArtifactRepository(database)),
         agents=agents,
+        credential_vault=vault,
     )
     app = FastAPI()
     app.state.services = services
@@ -113,6 +127,42 @@ def test_generation_is_explicit(api):
     })
     assert response.status_code == 201
     assert services.agents.generation_calls == 1
+
+
+def test_generation_encrypts_credentials_and_only_sends_auth_metadata(api):
+    client, services = api
+    project = client.post("/api/projects", json={"name": "Web"}).json()["data"]
+
+    response = client.post("/api/journeys/generate", json={
+        "project_id": project["id"], "name": "Generated login",
+        "target_url": "https://app.invalid", "objective": "Log in",
+        "username": "student", "password": "Password123",
+    })
+
+    assert response.status_code == 201
+    payload = response.json()["data"]
+    assert payload["has_credentials"] is True
+    assert "username" not in payload and "password" not in payload and "credential_ciphertext" not in payload
+    assert "student" not in payload["script"] and "Password123" not in payload["script"]
+    assert services.agents.generation_arguments[-1]["credentials_meta"] == {"has_auth": True}
+    with services.database.connect() as connection:
+        stored = connection.execute("SELECT credential_ciphertext FROM journeys WHERE id=?", (payload["id"],)).fetchone()[0]
+    assert stored and "student" not in stored and "Password123" not in stored
+
+
+def test_saved_journey_credentials_are_injected_into_runner_only(api):
+    client, services = api
+    project = client.post("/api/projects", json={"name": "Web"}).json()["data"]
+    journey = client.post("/api/journeys", json={
+        "project_id": project["id"], "name": "Login", "target_url": "https://app.invalid",
+        "script": "print('saved')", "username": "student", "password": "Password123",
+    }).json()["data"]
+
+    client.post(f"/api/journeys/{journey['id']}/run")
+
+    call = services.orchestrator.runner.calls[-1]
+    assert call["env_vars"] == {"AUTH_USERNAME": "student", "AUTH_PASSWORD": "Password123"}
+    assert set(call["secrets"]) == {"student", "Password123"}
 
 
 def test_daily_schedule_crud_and_run_now(api):

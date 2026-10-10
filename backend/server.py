@@ -43,6 +43,7 @@ from database import Database
 from orchestrator import RunOrchestrator
 from scheduler import APSchedulerAdapter, ScheduleService
 from artifact_store import ArtifactStore
+from credential_vault import CredentialVault, CredentialVaultError
 from repositories import ArtifactRepository
 try:
     from backend.api import install_api
@@ -94,8 +95,14 @@ runner = PlaywrightRunner(
 )
 domain_database = Database(settings.database_path)
 domain_database.initialize()
+try:
+    credential_vault = CredentialVault(settings.credential_encryption_key)
+except CredentialVaultError:
+    credential_vault = None
 if settings.runner_timeout_seconds is not None:
-    run_orchestrator = RunOrchestrator(domain_database, runner, n8n_client, settings.runner_timeout_seconds)
+    run_orchestrator = RunOrchestrator(
+        domain_database, runner, n8n_client, settings.runner_timeout_seconds, credential_vault=credential_vault
+    )
     schedule_service = ScheduleService(domain_database, run_orchestrator, APSchedulerAdapter())
 else:
     run_orchestrator = None
@@ -636,6 +643,7 @@ app.state.services = AppServices(
     scheduler=schedule_service,
     artifacts=artifact_store,
     agents=n8n_client,
+    credential_vault=credential_vault,
 )
 install_api(app)
 

@@ -29,7 +29,7 @@ class RunOverlapError(RuntimeError):
 
 
 class RunOrchestrator:
-    def __init__(self, database: Database, runner: Any, agents: Any, timeout_seconds: int):
+    def __init__(self, database: Database, runner: Any, agents: Any, timeout_seconds: int, credential_vault: Any = None):
         self.database = database
         self.runner = runner
         self.agents = agents
@@ -37,6 +37,7 @@ class RunOrchestrator:
         self.journeys = JourneyRepository(database)
         self.runs = RunRepository(database)
         self.artifacts = ArtifactRepository(database)
+        self.credential_vault = credential_vault
         self._active: set[str] = set()
         self._guard = asyncio.Lock()
 
@@ -101,12 +102,20 @@ class RunOrchestrator:
         secrets: Iterable[str] = (),
         schedule_id: str | None = None,
     ) -> dict[str, Any]:
-        journey = self.journeys.get(journey_id)
+        journey = self.journeys.get_with_credentials(journey_id)
         if not journey:
             raise KeyError(journey_id)
         scope = f"journey:{journey_id}"
         await self._claim(scope)
         try:
+            env_vars: dict[str, str] = {}
+            execution_secrets = list(secrets)
+            if journey.get("credential_ciphertext"):
+                if not self.credential_vault:
+                    raise RuntimeError("Journey credentials are configured but the credential vault is unavailable")
+                username, password = self.credential_vault.decrypt(journey["credential_ciphertext"])
+                env_vars = {"AUTH_USERNAME": username, "AUTH_PASSWORD": password}
+                execution_secrets.extend((username, password))
             trigger_value = trigger.value if isinstance(trigger, TriggerSource) else str(trigger)
             script, version = journey["script"], journey["script_version"]
             if trigger_value == TriggerSource.RERUN_SNAPSHOT.value and script_version:
@@ -128,6 +137,7 @@ class RunOrchestrator:
                 first = await self.runner.execute_script(
                     script_code=script, timeout_seconds=self.timeout_seconds,
                     execution_id=f"{run['id']}/attempt-1",
+                    env_vars=env_vars, secrets=execution_secrets,
                 )
             except Exception as error:
                 return self._finish(run["id"], {
@@ -146,7 +156,7 @@ class RunOrchestrator:
                     "final_decision": decision.reason,
                 })
 
-            packet = replace(build_failure_packet(first, secrets=secrets), original_script=script)
+            packet = replace(build_failure_packet(first, secrets=execution_secrets), original_script=script)
             self.runs.update(run["id"], {"status": RunStatus.DIAGNOSING.value})
             try:
                 repair = self.agents.diagnose_and_repair(packet)
@@ -172,6 +182,7 @@ class RunOrchestrator:
                 second = await self.runner.execute_script(
                     script_code=repair["repaired_script"], timeout_seconds=self.timeout_seconds,
                     execution_id=f"{run['id']}/attempt-2",
+                    env_vars=env_vars, secrets=execution_secrets,
                 )
             except Exception as error:
                 return self._finish(run["id"], {

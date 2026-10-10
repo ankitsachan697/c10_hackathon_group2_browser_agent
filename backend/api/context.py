@@ -14,6 +14,7 @@ class AppServices:
     scheduler: Any
     artifacts: ArtifactStore
     agents: Any
+    credential_vault: Any = None
 
 
 def services(request: Request) -> AppServices:

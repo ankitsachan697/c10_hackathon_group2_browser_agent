@@ -15,6 +15,8 @@ class JourneyCreate(BaseModel):
     target_url: str = Field(min_length=1)
     objective: str = ""
     script: str = ""
+    username: str | None = None
+    password: str | None = None
 
 
 class JourneyGenerate(JourneyCreate):
@@ -28,6 +30,18 @@ def _journey(repo, resource_id):
     return value
 
 
+def _create_data(payload: JourneyCreate, svc: AppServices) -> dict:
+    data = payload.model_dump(exclude={"username", "password"})
+    if payload.username is None and payload.password is None:
+        return data
+    if not payload.username or not payload.password:
+        raise HTTPException(422, detail=error("INVALID_CREDENTIALS", "Username and password must be supplied together"))
+    if not svc.credential_vault:
+        raise HTTPException(503, detail=error("CREDENTIAL_VAULT_UNAVAILABLE", "Credential encryption is not configured"))
+    data["credential_ciphertext"] = svc.credential_vault.encrypt(payload.username, payload.password)
+    return data
+
+
 @router.get("")
 def list_journeys(svc: AppServices = Depends(services)):
     return ok(JourneyRepository(svc.database).list())
@@ -37,13 +51,16 @@ def list_journeys(svc: AppServices = Depends(services)):
 def create_journey(payload: JourneyCreate, svc: AppServices = Depends(services)):
     if not ProjectRepository(svc.database).get(payload.project_id):
         raise HTTPException(422, detail=error("INVALID_PROJECT", "Project not found"))
-    return ok(JourneyRepository(svc.database).create(payload.model_dump()))
+    return ok(JourneyRepository(svc.database).create(_create_data(payload, svc)))
 
 
 @router.post("/generate", status_code=201)
 def generate_journey(payload: JourneyGenerate, svc: AppServices = Depends(services)):
-    generated = svc.agents.generate_flow_script(url=payload.target_url, task_objective=payload.objective, credentials_meta={})
-    data = payload.model_dump()
+    has_auth = bool(payload.username and payload.password)
+    generated = svc.agents.generate_flow_script(
+        url=payload.target_url, task_objective=payload.objective, credentials_meta={"has_auth": has_auth}
+    )
+    data = _create_data(payload, svc)
     data["script"] = generated["python_script"]
     journey = JourneyRepository(svc.database).create(data)
     return ok({**journey, "discovered_steps": generated.get("discovered_steps", [])})

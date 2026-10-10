@@ -1,4 +1,5 @@
 from backend.runner import PlaywrightRunner
+import pytest
 
 
 def test_wrapper_routes_chromium_launch_through_configurable_cdp_endpoint(tmp_path):
@@ -33,3 +34,18 @@ def test_execution_environment_does_not_inherit_backend_secrets(tmp_path, monkey
     assert environment["SAFE_VALUE"] == "allowed"
     assert environment["PATH"] == "/usr/bin"
     assert "N8N_BEARER_TOKEN" not in environment
+
+
+@pytest.mark.asyncio
+async def test_runner_redacts_username_and_password_from_all_output(tmp_path):
+    runner = PlaywrightRunner(tmp_path)
+    script = "print('student'); import sys; print('Password123', file=sys.stderr)"
+
+    result = await runner.execute_script(
+        script, env_vars={"AUTH_USERNAME": "student", "AUTH_PASSWORD": "Password123"},
+        secrets=["student", "Password123"], timeout_seconds=10,
+    )
+
+    rendered = str(result)
+    assert "student" not in rendered
+    assert "Password123" not in rendered
