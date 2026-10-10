@@ -6,8 +6,12 @@ import json
 from datetime import datetime, timezone
 from typing import Any, Iterable
 
-from .database import Database
-from .redaction import SensitiveDataRedactor
+try:
+    from .database import Database
+    from .redaction import SensitiveDataRedactor
+except ImportError:
+    from database import Database
+    from redaction import SensitiveDataRedactor
 
 
 class EventStore:

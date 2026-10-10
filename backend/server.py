@@ -44,6 +44,7 @@ from orchestrator import RunOrchestrator
 from scheduler import APSchedulerAdapter, ScheduleService
 from artifact_store import ArtifactStore
 from credential_vault import CredentialVault, CredentialVaultError
+from generation import GenerationCoordinator
 from repositories import ArtifactRepository
 try:
     from backend.api import install_api
@@ -59,6 +60,8 @@ schedule_service = None
 
 @asynccontextmanager
 async def lifespan(application: FastAPI):
+    if application.state.services.generation:
+        application.state.services.generation.recover()
     if schedule_service:
         schedule_service.start()
         application.state.scheduler_ready = True
@@ -109,6 +112,7 @@ if settings.runner_timeout_seconds is not None:
 else:
     run_orchestrator = None
 artifact_store = ArtifactStore(settings.artifacts_root, settings.artifact_trash_root, ArtifactRepository(domain_database))
+generation_coordinator = GenerationCoordinator(domain_database, n8n_client, run_orchestrator, credential_vault) if run_orchestrator else None
 
 # In-memory log buffer for streaming logs to frontend
 active_run_logs: Dict[str, List[Dict[str, Any]]] = {}
@@ -642,6 +646,7 @@ app.state.services = AppServices(
     artifacts=artifact_store,
     agents=n8n_client,
     credential_vault=credential_vault,
+    generation=generation_coordinator,
 )
 install_api(app)
 

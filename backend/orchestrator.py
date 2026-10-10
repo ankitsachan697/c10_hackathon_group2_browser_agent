@@ -116,6 +116,8 @@ class RunOrchestrator:
         script_version: str | None = None,
         secrets: Iterable[str] = (),
         schedule_id: str | None = None,
+        headed: bool = False,
+        on_run_created: Any = None,
     ) -> dict[str, Any]:
         journey = self.journeys.get_with_credentials(journey_id)
         if not journey:
@@ -135,6 +137,8 @@ class RunOrchestrator:
                 "trigger_source": trigger_value, "status": RunStatus.QUEUED.value,
                 "script_snapshot": script, "script_version": version,
             })
+            if on_run_created:
+                on_run_created(run)
             env_vars: dict[str, str] = {}
             execution_secrets = list(secrets)
             if journey.get("credential_ciphertext"):
@@ -152,6 +156,7 @@ class RunOrchestrator:
                     script_code=script, timeout_seconds=self.timeout_seconds,
                     execution_id=f"{run['id']}/attempt-1",
                     env_vars=env_vars, secrets=execution_secrets,
+                    headed=headed,
                 )
             except Exception as error:
                 return self._finish(run["id"], {
@@ -197,6 +202,7 @@ class RunOrchestrator:
                     script_code=repair["repaired_script"], timeout_seconds=self.timeout_seconds,
                     execution_id=f"{run['id']}/attempt-2",
                     env_vars=env_vars, secrets=execution_secrets,
+                    headed=headed,
                 )
             except Exception as error:
                 return self._finish(run["id"], {

@@ -15,6 +15,7 @@ class AppServices:
     artifacts: ArtifactStore
     agents: Any
     credential_vault: Any = None
+    generation: Any = None
 
 
 def services(request: Request) -> AppServices:
