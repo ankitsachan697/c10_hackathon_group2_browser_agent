@@ -42,6 +42,14 @@ from failure_context import build_failure_packet
 from database import Database
 from orchestrator import RunOrchestrator
 from scheduler import APSchedulerAdapter, ScheduleService
+from artifact_store import ArtifactStore
+from repositories import ArtifactRepository
+try:
+    from backend.api import install_api
+    from backend.api.context import AppServices
+except ImportError:
+    from api import install_api
+    from api.context import AppServices
 
 settings = Settings.from_env()
 n8n_client = N8nClient(settings)
@@ -87,6 +95,7 @@ if settings.runner_timeout_seconds is not None:
     schedule_service = ScheduleService(domain_database, run_orchestrator, APSchedulerAdapter())
 else:
     run_orchestrator = None
+artifact_store = ArtifactStore(settings.artifacts_root, settings.artifact_trash_root, ArtifactRepository(domain_database))
 
 # In-memory log buffer for streaming logs to frontend
 active_run_logs: Dict[str, List[Dict[str, Any]]] = {}
@@ -588,7 +597,7 @@ async def run_saved_test_case(case_id: str, headed: bool = False):
     return result
 
 
-@app.get("/api/runs")
+@app.get("/api/legacy/runs")
 def list_runs():
     return {"runs": suite_manager.get_run_history()}
 
@@ -627,6 +636,17 @@ def get_artifact(file_path: str):
         pass
 
     raise HTTPException(status_code=404, detail=f"Artifact not found: {file_path}")
+
+
+app.state.settings = settings
+app.state.services = AppServices(
+    database=domain_database,
+    orchestrator=run_orchestrator,
+    scheduler=schedule_service,
+    artifacts=artifact_store,
+    agents=n8n_client,
+)
+install_api(app)
 
 
 if __name__ == "__main__":
