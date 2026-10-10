@@ -61,6 +61,21 @@ CREATE TABLE IF NOT EXISTS import_markers (
   source_key TEXT NOT NULL, legacy_id TEXT NOT NULL, imported_id TEXT NOT NULL,
   PRIMARY KEY(source_key, legacy_id)
 );
+CREATE TABLE IF NOT EXISTS generation_operations (
+  id TEXT PRIMARY KEY, idempotency_key TEXT NOT NULL UNIQUE, status TEXT NOT NULL,
+  request_json TEXT NOT NULL, journey_id TEXT, run_id TEXT, error_code TEXT, error_message TEXT,
+  created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS activity_events (
+  seq INTEGER PRIMARY KEY AUTOINCREMENT, scope_type TEXT NOT NULL, scope_id TEXT NOT NULL,
+  source TEXT NOT NULL, kind TEXT NOT NULL, payload_json TEXT NOT NULL, created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS activity_events_scope ON activity_events(scope_type,scope_id,seq);
+CREATE TABLE IF NOT EXISTS agent_invocations (
+  id TEXT PRIMARY KEY, operation_id TEXT, run_id TEXT, agent_id TEXT NOT NULL,
+  purpose TEXT NOT NULL, status TEXT NOT NULL, duration_ms INTEGER, usage_json TEXT,
+  error_code TEXT, created_at TEXT NOT NULL
+);
 """
 
 
@@ -82,8 +97,8 @@ class Database:
             if "credential_ciphertext" not in journey_columns:
                 connection.execute("ALTER TABLE journeys ADD COLUMN credential_ciphertext TEXT")
             connection.execute(
-                "INSERT INTO schema_meta(key,value) VALUES ('schema_version','2') "
-                "ON CONFLICT(key) DO UPDATE SET value='2'"
+                "INSERT INTO schema_meta(key,value) VALUES ('schema_version','3') "
+                "ON CONFLICT(key) DO UPDATE SET value='3'"
             )
             schedule_fk = next(
                 (row for row in connection.execute("PRAGMA foreign_key_list(runs)") if row[3] == "schedule_id"),

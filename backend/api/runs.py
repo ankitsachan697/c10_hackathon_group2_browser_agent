@@ -1,9 +1,10 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
 from .context import AppServices, error, ok, services
 from ..models import TriggerSource
 from ..repositories import RunRepository
+from ..event_store import EventStore
 
 
 router = APIRouter(prefix="/runs", tags=["runs"])
@@ -16,6 +17,11 @@ class RerunRequest(BaseModel):
 @router.get("")
 def list_runs(svc: AppServices = Depends(services)):
     return ok(RunRepository(svc.database).list())
+
+
+@router.get("/{run_id}/events")
+def list_run_events(run_id: str, after_seq: int = Query(0, ge=0), svc: AppServices = Depends(services)):
+    return ok(EventStore(svc.database).list_after("run", run_id, after_seq))
 
 
 @router.get("/{run_id}")

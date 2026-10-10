@@ -2,12 +2,12 @@ from fastapi import APIRouter, FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
-from . import environments, journeys, projects, runs, schedules, system
+from . import environments, journeys, operations, projects, runs, schedules, system
 
 
 def build_api_router() -> APIRouter:
     router = APIRouter(prefix="/api")
-    for child in (projects.router, journeys.router, runs.router, schedules.router, environments.router, system.router):
+    for child in (projects.router, journeys.router, operations.router, runs.router, schedules.router, environments.router, system.router):
         router.include_router(child)
     return router
 
