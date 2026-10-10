@@ -13,8 +13,12 @@ The API uses `{ "data": ..., "error": null, "meta": {} }`. Failures use the same
 
 ## Journeys
 
+- `POST /api/operations/generations` with `Idempotency-Key` — queue discovery, save a validated script, and start the first run; accepts `project_id`, `name`, `target_url`, `objective`, optional `username`/`password`, `browser_mode` (`headless` or `headed`), and explicit `offline`.
+- `GET /api/operations/{id}` — generation status, journey/run IDs, or actionable error code.
+- `GET /api/operations/{id}/events?after_seq=N` — ordered durable generation events, up to 200 per page.
+
 - `GET|POST /api/journeys` — list or create saved journeys.
-- `POST /api/journeys/generate` — explicitly generate and save a journey.
+- `POST /api/journeys/generate` — compatibility endpoint that generates and saves without automatically running.
 - `GET|DELETE /api/journeys/{id}` — inspect or delete.
 - `PUT /api/journeys/{id}/credentials` — replace the encrypted username/password pair without returning it.
 - `POST /api/journeys/{id}/run` — execute the saved script directly.
@@ -25,6 +29,7 @@ Journey create and generate requests optionally accept `username` and `password`
 
 - `GET /api/runs` — list history.
 - `GET /api/runs/{id}` — retrieve a run with attempts and artifacts.
+- `GET /api/runs/{id}/events?after_seq=N` — ordered, redacted run, action, repair, and visual events.
 - `POST /api/runs/{id}/rerun` with mode `current` or `snapshot`.
 - `DELETE /api/runs/{id}` — delete and move evidence to trash.
 - `GET /api/artifacts/{artifact_id}` — download evidence by stable ID.

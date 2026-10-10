@@ -1,5 +1,6 @@
 from pathlib import Path
 import base64
+import asyncio
 
 import pytest
 from fastapi import FastAPI
@@ -10,10 +11,12 @@ from backend.api.context import AppServices
 from backend.artifact_store import ArtifactStore
 from backend.database import Database
 from backend.credential_vault import CredentialVault
+from backend.generation import GenerationCoordinator
 from backend.n8n_client import AgentError
 from backend.orchestrator import RunOrchestrator
 from backend.repositories import ArtifactRepository
 from backend.scheduler import ScheduleService
+from backend.visual_review import VisualReview
 
 
 class Runner:
@@ -99,6 +102,39 @@ def test_run_now_and_reruns_never_generate(api):
     assert current["status"] == snapshot["status"] == "PASSED"
     assert client.post(f"/api/projects/{project['id']}/run").status_code == 200
     assert services.agents.generation_calls == 0
+
+
+def test_create_operation_first_run_events_and_saved_rerun_skip_discovery(api, tmp_path):
+    client, services = api
+    project = client.post("/api/projects", json={"name": "Web"}).json()["data"]
+    services.orchestrator.visual_review = VisualReview(services.database, tmp_path / "artifacts", services.agents, 0.1, 0.5)
+    coordinator = GenerationCoordinator(services.database, services.agents, services.orchestrator, services.credential_vault)
+    coordinator.schedule = lambda _operation_id: None
+    services.generation = coordinator
+
+    response = client.post("/api/operations/generations", headers={"Idempotency-Key": "login-create-1"}, json={
+        "project_id": project["id"], "name": "Login", "target_url": "https://example.test/login",
+        "objective": "Validate successful login", "username": "student", "password": "Password123",
+        "browser_mode": "headless",
+    })
+    assert response.status_code == 202
+    operation_id = response.json()["data"]["id"]
+    asyncio.run(coordinator.execute(operation_id))
+
+    operation = client.get(f"/api/operations/{operation_id}").json()["data"]
+    operation_events = client.get(f"/api/operations/{operation_id}/events").json()["data"]
+    run = client.get(f"/api/runs/{operation['run_id']}").json()["data"]
+    run_events = client.get(f"/api/runs/{run['id']}/events").json()["data"]
+    assert operation["status"] == "COMPLETED"
+    assert [event["kind"] for event in operation_events] == ["generation.queued", "generation.started", "generation.completed", "run.queued", "generation.finished"]
+    assert run["status"] == "PASSED" and run["visual_outcome"] == "UNAVAILABLE"
+    assert any(event["kind"] == "run.attempt_finished" for event in run_events)
+    assert "Password123" not in str(operation_events) + str(run_events)
+    assert services.agents.generation_calls == 1
+
+    rerun = client.post(f"/api/runs/{run['id']}/rerun", json={"mode": "current"}).json()["data"]
+    assert rerun["status"] == "PASSED"
+    assert services.agents.generation_calls == 1
 
 
 def test_run_detail_includes_attempts_and_stable_artifact_links(api):

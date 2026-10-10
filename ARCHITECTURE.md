@@ -12,9 +12,12 @@ flowchart LR
     PW --> STORE[Artifact store]
     ORCH -->|eligible failure only| REPAIR[n8n repair agent]
     REPAIR -->|one repaired script| PW
-    UI -->|explicit generation only| GEN[n8n generation agent]
+    UI -->|create once| GEN[n8n discovery agent]
     GEN --> API
+    API --> EVENTS[(Durable activity feed)]
+    EVENTS --> UI
     STORE --> VIS[Local visual comparison]
+    VIS -->|bounded metrics| REVIEW[n8n visual agent]
 ```
 
 FastAPI owns resource state, orchestration, scheduling, retry policy, and artifact lifecycle. n8n never decides whether an operational run starts and does not sit in the normal execution path.
@@ -38,6 +41,6 @@ The retry limit is one. Every trigger enters the same orchestrator and shares it
 
 Artifact paths remain internal. Clients receive stable IDs, and the store validates that resolved paths remain under the configured root. Deletion moves evidence to recoverable trash before database cascade.
 
-Generation accepts a target URL, objective, and credential metadata after explicit user confirmation. Repair accepts a compact redacted failure packet with bounded script, error, DOM, and selector excerpts. Malformed or timed-out responses fail closed to `NEEDS_ATTENTION`.
+Generation accepts a target URL, objective, and credential metadata after explicit user confirmation; the saved script automatically receives one first run. Repair accepts a compact redacted failure packet with bounded script, error, DOM, and selector excerpts. Malformed or timed-out responses fail closed to `NEEDS_ATTENTION`. Activity events are sequenced in SQLite and clients reconnect with `after_seq`; the runner reports only actions it actually observes.
 
-Model name, token budget, temperature, endpoints, and agent IDs are deployment configuration. Visual comparison runs locally; the visual n8n export is inactive and is not called at runtime.
+Model name, token budget, temperature, endpoints, and agent IDs are deployment configuration. Visual comparison runs locally; when enabled and authenticated, the visual n8n agent receives only compact metrics. The exported n8n workflow JSON is reference material and is not the runtime invocation path.

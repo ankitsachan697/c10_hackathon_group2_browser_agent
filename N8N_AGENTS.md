@@ -1,10 +1,10 @@
 # n8n agent contracts
 
-n8n is optional and has two runtime responsibilities: explicit journey generation and one diagnosis/repair attempt after an eligible saved-script failure. Configure host, token, published agent IDs, model, token limit, temperature, and timeout at deployment.
+n8n has three configured runtime responsibilities: discovery/script generation for a newly created journey, one diagnosis/repair attempt after an eligible failure, and optional bounded visual review after screenshot comparison. Configure the backend runtime token, published agent IDs, model, token limit, temperature, and timeout at deployment. Without a token, normal generation fails visibly; local generation requires an explicit offline selection.
 
 ## Generation
 
-Input is `{ "target_url": "...", "objective": "...", "credentials_meta": {} }`. Output must be a JSON object containing `discovered_steps` (string array), `selectors` (object), and `python_script` (string). Generation runs only after the user confirms the create-journey review step. Generated scripts read credentials from environment variables.
+Input includes target URL, objective, and `has_auth` metadata only. Output must include `discovered_steps` (string array) and `python_script` (string). Generation runs once when the user submits the one-page form, followed by an automatic first run of the saved script. Generated scripts read credentials from environment variables.
 
 ## Repair
 
@@ -14,7 +14,7 @@ The backend determines eligibility, validates the response, and executes the rep
 
 ## Visual comparison
 
-Visual comparison is local and deterministic. `visual_regression_monitor.json` is inactive reference material and is not part of the runtime request path.
+Visual comparison is local and deterministic. When enabled and authenticated, the published visual agent receives only bounded status, mismatch metrics, threshold, and a baseline key; it never receives the full screenshot, DOM, or credentials. A visual-agent failure is recorded separately from the functional run status. `visual_regression_monitor.json` is inactive reference material, not the runtime invocation path.
 
 ## Validate and deploy
 
@@ -23,4 +23,4 @@ PYTHONPATH=. backend/.venv/bin/pytest backend/tests/test_n8n_workflows.py -q
 python n8n_workflows/deploy_workflows.py --validate
 ```
 
-After import, bind an OpenAI credential in n8n and set `N8N_MODEL`, `N8N_MAX_TOKENS`, and `N8N_TEMPERATURE` in its deployment environment. Store published IDs in the application environment as `N8N_DISCOVERY_AGENT_ID` and `N8N_REPAIR_AGENT_ID`.
+After import, bind the model credential in n8n and set model, token, and temperature limits in its deployment environment. The application reads published agent IDs and safe flags from `config/application.json`; only `N8N_BEARER_TOKEN` must be injected as a backend runtime secret. The private live agent definitions were not inspectable in this workspace, so validate their published MCP response contracts in an authenticated environment before a demo.

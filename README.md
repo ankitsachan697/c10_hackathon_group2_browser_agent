@@ -4,7 +4,7 @@ An AI-assisted browser testing workspace for creating reusable Playwright journe
 
 ## Execution model
 
-On-demand, scheduled, saved-case, and rerun actions execute the saved Playwright script directly. n8n is used only when a user explicitly generates a journey or when an eligible failed run requests diagnosis and repair. A repaired script is executed once; a second failure is marked `NEEDS_ATTENTION`.
+Creating a journey calls the configured n8n discovery agent, saves its validated Playwright script, and automatically runs that script once. On-demand, scheduled, project, saved-case, and rerun actions execute saved scripts directly without rediscovery. An eligible failure calls the repair agent once and gets one verification retry; a second failure is marked `NEEDS_ATTENTION`. Screenshot comparison is local, with optional bounded n8n visual review.
 
 The workspace provides Outskill-branded Overview, Projects, Runs, Schedules, and Settings views; SQLite-backed resource history; timezone-aware daily scheduling; current and historical-snapshot reruns; recoverable evidence deletion; and screenshot, video, log, script, repair, and visual inspection.
 
@@ -19,7 +19,7 @@ docker build -f backend/Dockerfile.runner -t outskill-browser-runner:local .
 npm --prefix frontend ci
 ```
 
-The backend creates a private, persistent key next to its SQLite database automatically; no manual `CREDENTIAL_ENCRYPTION_KEY` is needed for local use. Back up the database and its `.credentials.key` file together. An existing `CREDENTIAL_ENCRYPTION_KEY` remains supported for deployments and is copied to that local key file on startup when it is absent. Add `N8N_BEARER_TOKEN` only when the application should invoke the published n8n agents. Safe defaults—including endpoint, agent IDs, flags, timeouts, and the internal backend address—are tracked in `config/application.json`.
+The backend creates a private, persistent key next to its SQLite database automatically; no manual `CREDENTIAL_ENCRYPTION_KEY` is needed for local use. Back up the database and its `.credentials.key` file together. An existing `CREDENTIAL_ENCRYPTION_KEY` remains supported for deployments and is copied to that local key file on startup when it is absent. Set `N8N_BEARER_TOKEN` in the backend runtime secret store to invoke published n8n agents. Without it, normal generation fails visibly; the form offers an explicitly labelled local offline mode. Safe defaults—including endpoint, agent IDs, flags, timeouts, and the internal backend address—are tracked in `config/application.json`.
 
 Start the services in separate terminals:
 
@@ -30,6 +30,8 @@ npm --prefix frontend run dev
 ```
 
 Open `http://localhost:3000`. The frontend calls same-origin `/api/*` routes and Next.js proxies them to the configured backend. Credentials entered in a journey are encrypted in SQLite and decrypted only for the isolated Playwright worker.
+
+The create screen shows a durable operation feed. Once a run exists, its Activity tab shows observed, redacted Playwright actions, attempt outcomes, repair, and visual-review events. n8n internals appear only if the agent publishes them; the UI does not fabricate internal actions. Screenshots, video, saved scripts, and visual differences remain available as run evidence.
 
 ### GitHub Secrets
 
