@@ -1,0 +1,106 @@
+{
+  "name": "Flow Discovery & Script Generator Agent",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "flow-discovery-and-generator",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 300],
+      "id": "webhook-trigger",
+      "name": "Webhook — Start Discovery & Generation"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.body.taskObjective }}",
+        "options": {
+          "systemMessage": "=You are an expert Flow Discovery and Playwright Script Generator Agent.\nTarget URL: {{ $json.body.url }}\nMasked Credentials Spec: {{ JSON.stringify($json.body.credentialsMeta) }}\n\nRules:\n1. Generate clean, standalone Python Playwright code.\n2. Mask all sensitive credentials in code using os.environ.get('AUTH_PASSWORD'). Never hardcode raw passwords.\n3. Include milestone screenshot captures and error DOM dump.\n4. Output valid JSON with 'discovered_steps', 'selectors', and 'python_script'."
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.7,
+      "position": [480, 300],
+      "id": "ai-agent-generator",
+      "name": "AI Agent — Script Generator"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "gpt-4o",
+          "mode": "list",
+          "cachedResultName": "gpt-4o"
+        },
+        "options": {
+          "temperature": 0.2
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.2,
+      "position": [480, 500],
+      "id": "openai-model-node",
+      "name": "OpenAI GPT-4.1 Model",
+      "credentials": {
+        "openAiApi": {
+          "id": "p3HjGydOnUih77wo",
+          "name": "Trusota"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json.output }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [720, 300],
+      "id": "respond-webhook",
+      "name": "Respond to Webhook"
+    }
+  ],
+  "connections": {
+    "Webhook — Start Discovery & Generation": {
+      "main": [
+        [
+          {
+            "node": "AI Agent — Script Generator",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI GPT-4.1 Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent — Script Generator",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent — Script Generator": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

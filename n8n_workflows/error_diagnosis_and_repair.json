@@ -1,0 +1,106 @@
+{
+  "name": "Error Diagnosis & Adaptive Repair Agent",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "error-diagnosis-and-repair",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 300],
+      "id": "webhook-trigger-repair",
+      "name": "Webhook — Failure Diagnostic Ingestion"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ 'Original Script:\n' + $json.body.script + '\n\nError Trace:\n' + $json.body.errorTrace + '\n\nDOM Snapshot:\n' + ($json.body.domSnapshot || 'None') }}",
+        "options": {
+          "systemMessage": "=You are an Adaptive Self-Healing Playwright Engineer.\nYour job is to diagnose failing test runs (broken selectors, race conditions, timeout shifts) and return a repaired, fully working Python Playwright script.\n\nRules:\n1. Analyze why the locator or action failed.\n2. In the DOM snapshot, find better alternative locators (get_by_role, get_by_label, text, or multi-attribute CSS).\n3. Keep password parameters masked (use os.environ).\n4. Return JSON with 'root_cause', 'failure_category', 'recommended_fix', and 'repaired_script'."
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.7,
+      "position": [480, 300],
+      "id": "ai-agent-repair",
+      "name": "AI Agent — Adaptive Repair"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "gpt-4o",
+          "mode": "list",
+          "cachedResultName": "gpt-4o"
+        },
+        "options": {
+          "temperature": 0.1
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.2,
+      "position": [480, 500],
+      "id": "openai-repair-model",
+      "name": "OpenAI GPT-4.1 Model",
+      "credentials": {
+        "openAiApi": {
+          "id": "p3HjGydOnUih77wo",
+          "name": "Trusota"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json.output }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [720, 300],
+      "id": "respond-webhook-repair",
+      "name": "Respond with Healed Script"
+    }
+  ],
+  "connections": {
+    "Webhook — Failure Diagnostic Ingestion": {
+      "main": [
+        [
+          {
+            "node": "AI Agent — Adaptive Repair",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI GPT-4.1 Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent — Adaptive Repair",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent — Adaptive Repair": {
+      "main": [
+        [
+          {
+            "node": "Respond with Healed Script",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

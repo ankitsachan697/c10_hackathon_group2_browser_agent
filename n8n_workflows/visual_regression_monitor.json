@@ -1,0 +1,67 @@
+{
+  "name": "Visual Regression Monitor Agent",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "visual-regression-monitor",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 300],
+      "id": "webhook-visual-reg",
+      "name": "Webhook — Screenshot Ingestion"
+    },
+    {
+      "parameters": {
+        "jsCode": "const baseline = $input.item.json.body.baselinePath;\nconst candidate = $input.item.json.body.candidatePath;\nconst threshold = $input.item.json.body.threshold || 0.5;\n\nreturn {\n  baseline,\n  candidate,\n  tolerance: threshold,\n  status: 'QUEUED_FOR_DIFF'\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [480, 300],
+      "id": "code-preprocess-diff",
+      "name": "Preprocess Image Paths"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [720, 300],
+      "id": "respond-diff-analysis",
+      "name": "Respond Diff Analysis"
+    }
+  ],
+  "connections": {
+    "Webhook — Screenshot Ingestion": {
+      "main": [
+        [
+          {
+            "node": "Preprocess Image Paths",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preprocess Image Paths": {
+      "main": [
+        [
+          {
+            "node": "Respond Diff Analysis",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}
