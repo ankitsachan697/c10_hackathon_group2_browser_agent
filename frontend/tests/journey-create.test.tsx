@@ -76,6 +76,7 @@ test("submit invokes one generation operation and never puts credentials in obje
     method: "POST", headers: expect.objectContaining({ "Idempotency-Key": expect.any(String) }),
   }));
   expect(await screen.findByRole("link", { name: "Open run" })).toHaveAttribute("href", "/runs/run1");
+  expect(screen.queryByText("Supply both username and password, or leave both empty.")).not.toBeInTheDocument();
 });
 
 test("shows a retryable backend error without an unhandled rejection", async () => {

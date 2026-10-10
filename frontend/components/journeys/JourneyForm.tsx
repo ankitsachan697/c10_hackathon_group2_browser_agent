@@ -120,7 +120,7 @@ export function JourneyForm() {
         <div className="form-grid">
           <label>Username<input aria-label="Username" autoComplete="username" value={username} onChange={event => setUsername(event.target.value)}/></label>
           <label>Password<div className="password-field"><input ref={passwordRef} aria-label="Password" autoComplete="current-password" type={showPassword ? "text" : "password"} onChange={event => setPassword(event.target.value)} onBlur={event => setPassword(event.target.value)}/><button type="button" aria-label={showPassword ? "Hide password" : "Show password"} onClick={() => setShowPassword(value => !value)}>{showPassword ? <EyeOff size={16}/> : <Eye size={16}/>}</button></div></label>
-          {Boolean(username) !== Boolean(password) && <p className="full form-error">Supply both username and password, or leave both empty.</p>}
+          {!operation && Boolean(username) !== Boolean(password) && <p className="full form-error">Supply both username and password, or leave both empty.</p>}
         </div>
         <div className="journey-section-heading"><span>03</span><div><h2>Browser mode</h2><p>Choose how the first run opens Chromium.</p></div></div>
         <CompanionPicker mode={mode} onModeChange={setMode} companionId={companionId} onCompanionChange={setCompanionId}/>

@@ -80,6 +80,10 @@ def test_discovery_accepts_json_code_fence_and_requests_structured_output(monkey
     assert result["discovered_steps"] == ["open page"]
     assert "discovered_steps" in prompts[0] and "python_script" in prompts[0]
     assert "JSON" in prompts[0]
+    assert "get_by_label" in prompts[0]
+    assert "get_by_role" in prompts[0]
+    assert "label=" in prompts[0]
+    assert "button[type='submit']" in prompts[0]
 
 
 def test_explicit_offline_generation_is_labelled(monkeypatch):
