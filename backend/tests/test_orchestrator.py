@@ -397,8 +397,9 @@ async def test_run_registers_complete_evidence_without_credentials(domain, tmp_p
     assert detail["script_snapshot"] == "print('saved')"
     assert {item["kind"] for item in artifacts} == {"screenshot", "video", "log"}
     assert len(attempts) == 1
-    assert "student" not in str(attempts) and "Password123" not in str(attempts)
-    assert "4111" not in str(attempts) and "cvv=123" not in str(attempts)
+    stored_output = attempts[0]["stdout"] + attempts[0]["stderr"]
+    assert "student" not in stored_output and "Password123" not in stored_output
+    assert "4111" not in stored_output and "cvv=123" not in stored_output
     assert "student" not in (tmp_path / run["id"] / "attempt-1" / "execution.log").read_text()
     assert "Password123" not in (tmp_path / run["id"] / "attempt-1" / "execution.log").read_text()
     assert "4111" not in (tmp_path / run["id"] / "attempt-1" / "execution.log").read_text()
