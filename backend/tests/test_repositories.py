@@ -117,7 +117,7 @@ def test_existing_database_adds_journey_credential_storage_in_place(tmp_path):
         columns = {row[1] for row in connection.execute("PRAGMA table_info(journeys)")}
         version = connection.execute("SELECT value FROM schema_meta WHERE key='schema_version'").fetchone()[0]
     assert "credential_ciphertext" in columns
-    assert version == "4"
+    assert version == "5"
 
 
 def test_journey_repository_keeps_ciphertext_private(store):

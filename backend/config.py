@@ -126,6 +126,7 @@ class Settings:
     n8n_visual_agent_id: str | None
     backend_internal_url: str | None
     credential_encryption_key: str | None
+    companion_admin_token: str | None
     auto_repair_retries: int
     enable_n8n_generation: bool
     enable_n8n_repair: bool
@@ -166,6 +167,7 @@ class Settings:
             n8n_visual_agent_id=_env_or_config("N8N_VISUAL_AGENT_ID", config, "n8n", "visualAgentId"),
             backend_internal_url=_env_or_config("BACKEND_INTERNAL_URL", config, "backend", "internalUrl"),
             credential_encryption_key=_optional_env("CREDENTIAL_ENCRYPTION_KEY"),
+            companion_admin_token=_optional_env("COMPANION_ADMIN_TOKEN"),
             auto_repair_retries=1,
             enable_n8n_generation=_bool("ENABLE_N8N_GENERATION", _env_or_config("ENABLE_N8N_GENERATION", config, "n8n", "generationEnabled")),
             enable_n8n_repair=_bool("ENABLE_N8N_REPAIR", _env_or_config("ENABLE_N8N_REPAIR", config, "n8n", "repairEnabled")),

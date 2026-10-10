@@ -46,6 +46,7 @@ from scheduler import APSchedulerAdapter, ScheduleService
 from artifact_store import ArtifactStore
 from credential_vault import CredentialVault, CredentialVaultError
 from generation import GenerationCoordinator
+from companion_registry import CompanionRegistry
 from repositories import ArtifactRepository
 try:
     from backend.api import install_api
@@ -101,6 +102,7 @@ runner = PlaywrightRunner(
 )
 domain_database = Database(settings.database_path)
 domain_database.initialize()
+companion_registry = CompanionRegistry(domain_database, settings.companion_admin_token)
 try:
     credential_vault = CredentialVault.for_database(settings.database_path, settings.credential_encryption_key)
 except CredentialVaultError:
@@ -650,6 +652,7 @@ app.state.services = AppServices(
     agents=n8n_client,
     credential_vault=credential_vault,
     generation=generation_coordinator,
+    companions=companion_registry,
 )
 install_api(app)
 
