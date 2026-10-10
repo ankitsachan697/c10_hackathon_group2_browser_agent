@@ -24,6 +24,7 @@ export function JourneyForm() {
   const [objective, setObjective] = useState("");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const passwordRef = useRef<HTMLInputElement>(null);
   const [showPassword, setShowPassword] = useState(false);
   const [mode, setMode] = useState<"headless" | "headed">("headless");
   const [companionId, setCompanionId] = useState("");
@@ -82,10 +83,11 @@ export function JourneyForm() {
       const result = await api<GenerationOperation>("/api/operations/generations", {
         method: "POST", headers: { "Idempotency-Key": key },
         body: JSON.stringify({ project_id: projectId, name: name.trim(), target_url: url.trim(), objective: objective.trim(),
-          username: username || undefined, password: password || undefined, browser_mode: mode,
+          username: username || undefined, password: passwordRef.current?.value || undefined, browser_mode: mode,
           companion_id: mode === "headed" ? companionId || undefined : undefined, offline }),
       });
       sessionStorage.setItem(operationKey, result.id);
+      if (passwordRef.current) passwordRef.current.value = "";
       setPassword("");
       setOperation(result);
     } catch (failure) {
@@ -98,6 +100,7 @@ export function JourneyForm() {
     sessionStorage.removeItem(operationKey);
     submitKey.current = null;
     setOperation(null);
+    if (passwordRef.current) passwordRef.current.value = "";
     setName(""); setUrl(""); setObjective(""); setUsername(""); setPassword(""); setError("");
   };
   return <div className="page journey-create">
@@ -116,7 +119,7 @@ export function JourneyForm() {
         <div className="journey-section-heading"><span>02</span><div><h2>Credentials</h2><p>Optional. These are passed to the browser worker, not the discovery agent.</p></div></div>
         <div className="form-grid">
           <label>Username<input aria-label="Username" autoComplete="username" value={username} onChange={event => setUsername(event.target.value)}/></label>
-          <label>Password<div className="password-field"><input aria-label="Password" autoComplete="current-password" type={showPassword ? "text" : "password"} value={password} onChange={event => setPassword(event.target.value)}/><button type="button" aria-label={showPassword ? "Hide password" : "Show password"} onClick={() => setShowPassword(value => !value)}>{showPassword ? <EyeOff size={16}/> : <Eye size={16}/>}</button></div></label>
+          <label>Password<div className="password-field"><input ref={passwordRef} aria-label="Password" autoComplete="current-password" type={showPassword ? "text" : "password"} onChange={event => setPassword(event.target.value)} onBlur={event => setPassword(event.target.value)}/><button type="button" aria-label={showPassword ? "Hide password" : "Show password"} onClick={() => setShowPassword(value => !value)}>{showPassword ? <EyeOff size={16}/> : <Eye size={16}/>}</button></div></label>
           {Boolean(username) !== Boolean(password) && <p className="full form-error">Supply both username and password, or leave both empty.</p>}
         </div>
         <div className="journey-section-heading"><span>03</span><div><h2>Browser mode</h2><p>Choose how the first run opens Chromium.</p></div></div>

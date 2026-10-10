@@ -33,6 +33,19 @@ test("project creation keeps typed journey fields", async () => {
   expect(screen.getByLabelText("Journey name")).toHaveValue("Practice login");
 });
 
+test("browser-filled password survives edits to another journey field", async () => {
+  vi.stubGlobal("fetch", vi.fn(async () => envelope([{ id: "p1", name: "Web", description: "" }])));
+  render(<JourneyCreatePage/>);
+  await screen.findByRole("option", { name: "Web" });
+  const password = screen.getByLabelText("Password") as HTMLInputElement;
+  Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(password, "synthetic-secret");
+  expect(password).toHaveValue("synthetic-secret");
+
+  fireEvent.change(screen.getByLabelText("Journey name"), { target: { value: "Login" } });
+
+  expect(password).toHaveValue("synthetic-secret");
+});
+
 test("submit invokes one generation operation and never puts credentials in objective", async () => {
   let submitted = "";
   const fetchMock = vi.fn(async (input: RequestInfo, init?: RequestInit) => {

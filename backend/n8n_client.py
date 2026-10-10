@@ -162,13 +162,20 @@ class N8nClient:
             f"Generate a robust Python Playwright script using sync API (sync_playwright). "
             f"Never hardcode passwords; read from os.environ.get('AUTH_PASSWORD'). "
             f"Never capture screenshots while credentials are present in form fields. Capture only landing and post-submit result evidence. "
-            f"inside os.environ.get('ARTIFACTS_DIR', './'). "
-            f"Assert any success message or heading like 'Logged In Successfully'."
+            f"Write evidence inside os.environ.get('ARTIFACTS_DIR', './'). "
+            f"Assert the outcome specified in the objective. "
+            f"Return only a JSON object with discovered_steps (array of strings) and python_script (string). "
+            f"Do not include Markdown fences or explanatory text outside the JSON object."
         )
 
         agent_res = self.call_n8n_agent(self.settings.n8n_discovery_agent_id, prompt)
         candidate = agent_res.get("response", agent_res) if isinstance(agent_res, dict) else agent_res
         if isinstance(candidate, str):
+            candidate = candidate.strip()
+            if candidate.startswith("```") and candidate.endswith("```"):
+                newline = candidate.find("\n")
+                if newline != -1:
+                    candidate = candidate[newline + 1:-3].strip()
             try:
                 candidate = json.loads(candidate)
             except json.JSONDecodeError as error:

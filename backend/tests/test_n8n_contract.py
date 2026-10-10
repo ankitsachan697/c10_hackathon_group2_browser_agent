@@ -66,6 +66,22 @@ def test_standard_mcp_text_response_generates_script(monkeypatch):
     assert result["agent_source"].startswith("n8n")
 
 
+def test_discovery_accepts_json_code_fence_and_requests_structured_output(monkeypatch):
+    agent = client(monkeypatch, token="test-token")
+    prompts = []
+    payload = {"python_script": "print('generated')", "discovered_steps": ["open page"]}
+    monkeypatch.setattr(agent, "call_n8n_agent", lambda _agent_id, prompt: prompts.append(prompt) or {
+        "response": "```json\n" + json.dumps(payload) + "\n```"
+    })
+
+    result = agent.generate_flow_script("https://example.test", "inspect page", {"has_auth": True})
+
+    assert result["python_script"] == "print('generated')"
+    assert result["discovered_steps"] == ["open page"]
+    assert "discovered_steps" in prompts[0] and "python_script" in prompts[0]
+    assert "JSON" in prompts[0]
+
+
 def test_explicit_offline_generation_is_labelled(monkeypatch):
     agent = client(monkeypatch)
 
