@@ -257,6 +257,8 @@ class N8nClient:
         has_login = any(kw in objective.lower() for kw in ["login", "sign in", "auth"])
         has_register = any(kw in objective.lower() for kw in ["signup", "sign up", "register"])
         has_checkout = any(kw in objective.lower() for kw in ["checkout", "cart", "buy"])
+        expected_match = re.search(r'["“](.+?)["”]', objective)
+        expected_text = expected_match.group(1).strip() if expected_match else ""
 
         clean_url = url.strip()
         if not clean_url.startswith("http"):
@@ -302,6 +304,7 @@ def run():
     username = os.environ.get("AUTH_USERNAME")
     password = os.environ.get("AUTH_PASSWORD")
     target_url = {repr(clean_url)}
+    expected_text = {json.dumps(expected_text)}
 
     print(f"[Flow Discovery] Starting journey for: {{target_url}}")
     print(f"[Credential Shield] Masked account authentication prepared for {{username}}")
@@ -344,6 +347,8 @@ def run():
             
             # Step 4: Capture Result
             page.screenshot(path=os.path.join(artifacts_dir, "step_3_result.png"))
+            if expected_text:
+                page.get_by_text(expected_text, exact=False).wait_for(state="visible", timeout=10000)
             print(f"[Step 4] Journey reached destination successfully! Current URL: {{page.url}}")
 
         except Exception as e:

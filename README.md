@@ -15,17 +15,25 @@ cp .env.example .env
 python3 -m venv backend/.venv
 backend/.venv/bin/pip install -r backend/requirements.txt
 backend/.venv/bin/playwright install chromium
-npm --prefix frontend install
+npm --prefix frontend ci
+backend/.venv/bin/python -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())'
 ```
+
+Put the generated value in the untracked `.env` as `CREDENTIAL_ENCRYPTION_KEY`. Add `N8N_BEARER_TOKEN` only when the application should invoke the published n8n agents. Safe defaults—including endpoint, agent IDs, flags, timeouts, and the internal backend address—are tracked in `config/application.json`.
 
 Start the services in separate terminals:
 
 ```bash
+set -a; source .env; set +a
 PYTHONPATH=. backend/.venv/bin/uvicorn backend.server:app --host 127.0.0.1 --port 8000
 npm --prefix frontend run dev
 ```
 
-Open `http://localhost:3000`. All environment-specific values live in environment variables; no n8n URL, token, agent ID, model, credential, test URL, or login is committed. See [.env.example](.env.example).
+Open `http://localhost:3000`. The frontend calls same-origin `/api/*` routes and Next.js proxies them to the configured backend. Credentials entered in a journey are encrypted in SQLite and decrypted only for the isolated Playwright worker.
+
+### GitHub Secrets
+
+Configure `N8N_BEARER_TOKEN` and `CREDENTIAL_ENCRYPTION_KEY` in repository or environment secrets. `.github/workflows/quality.yml` maps them into runtime environment variables without printing them. The optional live login check additionally uses `E2E_LOGIN_USERNAME` and `E2E_LOGIN_PASSWORD`. GitHub Secrets do not configure a separately deployed server; inject the same two runtime secrets through that host's secret manager.
 
 ### Browser execution after deployment
 

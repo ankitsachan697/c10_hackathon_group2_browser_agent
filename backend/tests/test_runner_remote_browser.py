@@ -24,6 +24,16 @@ def test_wrapper_keeps_local_launch_fallback(tmp_path):
     assert "return browser_type.launch(*args, **kwargs)" in wrapped
 
 
+def test_wrapper_preserves_browser_close_indentation(tmp_path):
+    runner = PlaywrightRunner(tmp_path)
+    wrapped = runner._wrap_script(
+        "def run():\n    with manager():\n        try:\n            pass\n        finally:\n            browser.close()\n",
+        str(tmp_path / "run"),
+    )
+
+    compile(wrapped, "wrapped.py", "exec")
+
+
 def test_execution_environment_does_not_inherit_backend_secrets(tmp_path, monkeypatch):
     monkeypatch.setenv("N8N_BEARER_TOKEN", "must-not-leak")
     monkeypatch.setenv("PATH", "/usr/bin")

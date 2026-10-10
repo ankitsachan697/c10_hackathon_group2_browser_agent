@@ -303,9 +303,17 @@ class PlaywrightRunner:
 
         # Ensure context.close() is explicitly called before browser.close()
         if "browser.close()" in script:
-            script = script.replace(
-                "browser.close()",
-                "try:\n            if 'context' in locals():\n                context.close()\n        except Exception:\n            pass\n        browser.close()"
+            script = re.sub(
+                r"(?m)^([ \t]*)browser\.close\(\)[ \t]*$",
+                lambda match: (
+                    f"{match.group(1)}try:\n"
+                    f"{match.group(1)}    if 'context' in locals():\n"
+                    f"{match.group(1)}        context.close()\n"
+                    f"{match.group(1)}except Exception:\n"
+                    f"{match.group(1)}    pass\n"
+                    f"{match.group(1)}browser.close()"
+                ),
+                script,
             )
 
         header = f"""# Auto-injected environment setup

@@ -1,137 +1,51 @@
-# User & Operator Guide: AI Self-Healing Browser Automation Platform
+# Browser Automation Studio user guide
 
-Welcome to the AI Self-Healing Browser Automation System. This guide walks you through the features of the platform, running your first automated journey, monitoring self-healing, organizing test suites, and viewing visual regression heatmaps.
+## Create a journey
 
----
+1. Open **New journey**.
+2. If this is the first run, select **Create first project**, give the project a name, and create it. The project is selected automatically. For later journeys, choose **+ New project…** in the selector.
+3. Enter a journey name, target URL, and objective. Describe actions and expected results; do not put credentials in the objective.
+4. On **Browser and credentials**, optionally enter a username and password. The password is masked. Both values are encrypted before SQLite persistence and are never embedded in the generated script or sent to n8n.
+5. Review the masked summary, then select **Generate and save**. Generation is the only point where the Flow Discovery agent can be called.
 
-## 1. Quick Launch
+Generated scripts read `AUTH_USERNAME` and `AUTH_PASSWORD`. At execution time the backend decrypts the stored values in memory and passes them only to the isolated Playwright worker.
 
-### Start the Platform
-1. **Backend Server** (runs on port 8000):
-   ```bash
-   cd /Users/asacha/Downloads/ai-accelerator-C10/browser-agent-platform/backend
-   python3 server.py
-   ```
-   *(Note: `server.py` automatically detects and uses the local `.venv` virtual environment).*
+## Run and inspect
 
-2. **Frontend Dashboard** (runs on port 3000):
-   ```bash
-   cd /Users/asacha/Downloads/ai-accelerator-C10/browser-agent-platform/frontend
-   npm run dev
-   ```
-3. Open your browser at **`http://localhost:3000`**.
+Saved-script execution is deterministic. **Run now**, a daily schedule, a project run, and current or historical reruns all execute the saved Playwright script directly. They do not regenerate it.
 
----
+Run detail retains:
 
-## 2. Platform Layout Walkthrough
+- immutable Playwright script snapshot and version;
+- every attempt and redacted stdout/stderr;
+- milestone and failure screenshots;
+- flushed `.webm` session video when available;
+- DOM/log artifacts;
+- diagnosis, repair, and the single verification retry.
 
-The platform uses a split-panel dashboard layout:
+An eligible selector or timeout failure gets at most one repair retry. A second failure becomes **Needs attention**.
 
+## Daily schedules
+
+Create a daily local time and IANA timezone from **Schedules**. Use **Run now** to execute the scheduled scope immediately. The scheduler restores enabled jobs after backend restart and prevents overlapping runs for the same journey.
+
+## Configuration and secrets
+
+Safe defaults are tracked in `config/application.json`. Deployment environment variables can override them. Only these values are secrets:
+
+- `N8N_BEARER_TOKEN` authenticates optional n8n generation and repair calls.
+- `CREDENTIAL_ENCRYPTION_KEY` encrypts reusable journey credentials.
+
+Generate a credential key with:
+
+```bash
+backend/.venv/bin/python -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())'
 ```
-+-----------------------------------------------------------------------------------------+
-| [AUTONOMOUS BROWSER AGENTS] Presets: [🎯 PracticeTest] [🔐 Generic Login] [🔥 Broken]  |
-+--------------------------+--------------------------------------------------------------+
-| LEFT SIDE PANEL          | MAIN WORKSPACE                                               |
-| [📁 Projects] [📜 History]| 1. Active Agent Status Deck (Discovery, Exec, Diagnosis...) |
-|                          | 2. Journey Configuration Deck (URL, Credentials, Mode, Run) |
-| - Project Folders:       | 3. Live Log Terminal (Left) | Script Viewer/Editor (Right)   |
-|   📁 Authentication      | 4. Visual Regression Monitor & Playwright Session Video      |
-|   📁 Checkout            | 5. Step Screenshots Carousel (Click to Zoom)                 |
-|   ...                    |                                                              |
-+--------------------------+--------------------------------------------------------------+
-```
 
----
+Keep it stable for the lifetime of stored credentials. If it is lost or changed, existing credentials cannot be decrypted and must be replaced. Never commit either secret or expose them through a `NEXT_PUBLIC_*` variable.
 
-## 3. Running Your First Test Journey
+For a remote backend, set `PLAYWRIGHT_CDP_ENDPOINT` to an authenticated private `ws://` or `wss://` Chrome DevTools endpoint. Never publish a raw browser debugging port.
 
-### Step 1: Use the PracticeTest Preset
-1. Click the **"🎯 PracticeTest (student/Password123)"** preset button in the top navigation bar.
-2. The form fills automatically:
-   - **Target URL**: `https://practicetestautomation.com/practice-test-login/`
-   - **Username**: `student`
-   - **Password**: `Password123` (shielded by default)
-   - **Objective**: Authenticate and validate the `Logged In Successfully` heading.
+## Connection failures
 
-### Step 2: Choose Headed vs. Headless Mode
-- **⚡ HEADLESS (BACKGROUND)**: Runs fast in the background without opening a visible browser window.
-- **🖥️ HEADED (WATCH BROWSER LIVE)**: Opens a physical Chromium window on macOS with slow-motion execution (`slow_mo=600ms`) so you can visually watch the bot type credentials and navigate pages.
-
-### Step 3: Click "START TASK"
-- Watch the **Agent Status Cards** animate through:
-  1. *Flow Discovery Agent* (analyzes forms & pages).
-  2. *Script Generator Agent* (synthesizes Python Playwright code).
-  3. *Execution Agent* (launches Chromium & logs events with credential redaction).
-  4. *Visual Regression Monitor* (captures screenshots and manages Golden Baseline).
-
----
-
-## 4. Direct Script Execution & In-Viewer Code Editing
-
-You don't need to generate a new script every time:
-1. In the **Playwright Script Viewer** (right panel), click **"Edit Code"**.
-2. The viewer turns into an in-browser code editor. You can:
-   - Tweak locators or timeouts.
-   - Add custom assertions (e.g. `expect(page.locator("h1")).to_have_text(...)`).
-   - Add custom screenshots (e.g. `page.screenshot(path="custom_step.png")`).
-3. Click **"▶ Run Script to Validate"**:
-   - The platform immediately sends the customized script to the Playwright runner.
-   - Output logs stream in the terminal.
-   - Screenshots and session video are updated.
-   - If your customized code contains errors, the **Error Diagnosis & Adaptive Repair Agent** automatically triggers to fix it for you.
-
----
-
-## 5. Test Suites & Project Folders
-
-### Saving a Script to a Test Suite
-1. Once a script is generated or edited, click **"Save Suite"** in the script viewer header.
-2. Enter:
-   - **Project / Folder Name** (e.g. `Authentication`, `Checkout`, `Regression`).
-   - **Test Case Name** (e.g. `PracticeTest Login Journey`).
-   - **Run Schedule** (e.g. `Manual`, `Hourly`, `Daily at Midnight`).
-3. Click **"Save to Suite"**.
-
-### Running from the Left Side Panel
-1. Click the **"Projects"** tab in the left side panel.
-2. Expand your project folder.
-3. Click **"▶ Run"** next to any saved test case to execute it with 1 click.
-4. Click **"👁 Load"** to load the script into the editor for review or modification.
-
----
-
-## 6. Inspecting Run History & Playing Session Videos
-
-1. Click the **"History"** tab in the left side panel.
-2. Click any past execution run from the chronological list:
-   - The main workspace updates to show that specific run.
-   - The **Playwright Session Video Recording (.webm)** player loads with full controls (Play/Pause, Seek, Fullscreen, Volume).
-   - Milestone screenshots captured during that run are displayed below.
-   - Click any screenshot to open the **High-Resolution Click-to-Zoom Modal**.
-
----
-
-## 7. Understanding the Smart Golden Baseline
-
-* **Run 1**: The first time you execute a test for a URL/case, the milestone screenshot is locked as the master **Golden Baseline**.
-  - Badge displayed: **`🌟 GOLDEN BASELINE ESTABLISHED`**.
-  - No false regression warnings are triggered.
-* **Run 2+**: Subsequent executions compare newly captured screenshots against the Golden Baseline using **Pixelmatch**:
-  - If layout elements moved or changed, the **Magenta Diff Heatmap** highlights exact pixel deviations.
-  - Pixel shift percentage and tolerance threshold (default: 0.5%) are displayed.
-  - Tabs allow you to switch between **Magenta Diff Heatmap**, **Golden Baseline**, and **Current Candidate** for side-by-side comparison.
-
----
-
-## 8. Testing Self-Healing with the "Broken Selector" Preset
-
-To see the autonomous self-healing loop in action:
-1. Click the **"🔥 Broken Selector (Test Heal)"** preset button in the top navigation.
-2. Click **"START TASK"**.
-3. What happens:
-   - The initial script attempts to click an obsolete button (`button#legacy-submit-v1`).
-   - Execution fails with a timeout error.
-   - The **Error Diagnosis Agent** analyzes the traceback and DOM snapshot.
-   - The **Adaptive Repair Agent** synthesizes a healed selector using resilient fallback locators.
-   - The repaired script re-executes automatically and finishes with status **PASSED**!
-   - In the script viewer, click the **"Healed Script"** and **"Diagnosis Report"** tabs to inspect the root-cause analysis and code diff.
+The frontend proxies `/api/*` through Next.js. If the backend is stopped, the journey screen shows **Backend is unavailable** with a retry action instead of a runtime overlay. Service badges independently report API, runner, scheduler, and n8n readiness.

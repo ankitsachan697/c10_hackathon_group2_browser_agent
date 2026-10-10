@@ -18,6 +18,8 @@ The API uses `{ "data": ..., "error": null, "meta": {} }`. Failures use the same
 - `GET|PATCH|DELETE /api/journeys/{id}` — inspect, update, or delete.
 - `POST /api/journeys/{id}/run` — execute the saved script directly.
 
+Journey create and generate requests optionally accept `username` and `password`. They must be supplied together. Responses never return either value or the stored ciphertext; `has_credentials` indicates whether an encrypted credential pair exists. A missing encryption key returns `CREDENTIAL_VAULT_UNAVAILABLE` without persisting plaintext.
+
 ## Runs and evidence
 
 - `GET /api/runs` — list history.
@@ -33,3 +35,5 @@ Operational endpoints never generate scripts. `/api/autonomous-run` is a `410 Go
 - `GET|POST /api/schedules`; `PATCH|DELETE /api/schedules/{id}`.
 - `POST /api/schedules/{id}/run` — run immediately.
 - `GET /api/health`, `GET /api/config/public`, and `GET /api/docs`.
+
+The web application uses same-origin `/api/*`; Next.js proxies to `backend.internalUrl` from `config/application.json` or the `BACKEND_INTERNAL_URL` deployment override.

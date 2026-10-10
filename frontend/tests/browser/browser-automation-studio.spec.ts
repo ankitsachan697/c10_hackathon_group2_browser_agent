@@ -79,3 +79,39 @@ test("navigation remains usable at mobile width with visible keyboard focus", as
   await expect(page.getByRole("navigation", { name: "Primary navigation" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Automation at a glance" })).toBeVisible();
 });
+
+test("first-time secure login journey executes with complete evidence", async ({ page, request }) => {
+  const username = process.env.E2E_LOGIN_USERNAME;
+  const password = process.env.E2E_LOGIN_PASSWORD;
+  test.skip(!username || !password, "Set E2E_LOGIN_USERNAME and E2E_LOGIN_PASSWORD for the live login acceptance test");
+
+  await page.goto("/journeys/new");
+  await page.getByRole("button", { name: "Create first project" }).click();
+  await page.getByLabel("Project name").fill("Practice login coverage");
+  await page.getByLabel("Project description").fill("Secure browser login acceptance");
+  await page.getByRole("button", { name: "Create project" }).click();
+  await page.getByLabel("Journey name").fill("Practice login journey");
+  await page.getByLabel("Target URL").fill("https://practicetestautomation.com/practice-test-login/");
+  await page.getByLabel("Objective").fill('Log in and validate "Logged In Successfully"');
+  await page.getByRole("button", { name: "Review journey" }).click();
+  await page.getByLabel("Username").fill(username!);
+  await page.getByLabel("Password", { exact: true }).fill(password!);
+  await page.getByRole("button", { name: "Review journey" }).click();
+  await expect(page.getByText(/••••••••/)).toBeVisible();
+  await page.getByRole("button", { name: "Generate and save" }).click();
+  await expect(page.getByRole("heading", { name: "Script ready" })).toBeVisible();
+
+  const journeys = (await (await request.get(`${apiBase}/api/journeys`)).json()).data;
+  const journey = journeys.find((item: { name: string }) => item.name === "Practice login journey");
+  expect(journey.has_credentials).toBe(true);
+  expect(journey.script).not.toContain(username);
+  expect(journey.script).not.toContain(password);
+  const run = (await (await request.post(`${apiBase}/api/journeys/${journey.id}/run`)).json()).data;
+  expect(["PASSED", "PASSED_AFTER_REPAIR"]).toContain(run.status);
+  const detail = (await (await request.get(`${apiBase}/api/runs/${run.id}`)).json()).data;
+  expect(detail.script_snapshot).toContain("sync_playwright");
+  expect(detail.attempts).toHaveLength(1);
+  expect(detail.artifacts.some((item: { kind: string }) => item.kind === "screenshot")).toBe(true);
+  expect(detail.artifacts.some((item: { kind: string }) => item.kind === "video")).toBe(true);
+  expect(JSON.stringify(detail)).not.toContain(password);
+});

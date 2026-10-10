@@ -114,6 +114,15 @@ def test_generated_login_script_does_not_supply_demo_credentials():
     assert "SecurePass123!" not in script
 
 
+def test_generated_login_script_asserts_quoted_expected_text():
+    script = N8nClient(Settings.from_env()).generate_flow_script(
+        "https://target.example.test", 'login and validate "Logged In Successfully"'
+    )["python_script"]
+
+    assert 'expected_text = "Logged In Successfully"' in script
+    assert "page.get_by_text(expected_text, exact=False).wait_for" in script
+
+
 @pytest.mark.asyncio
 async def test_saved_script_run_uses_configured_runner_and_visual_settings(monkeypatch):
     configured_settings = SimpleNamespace(

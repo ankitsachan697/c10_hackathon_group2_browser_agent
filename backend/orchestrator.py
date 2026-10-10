@@ -45,7 +45,13 @@ class RunOrchestrator:
     def _now() -> str:
         return datetime.now(timezone.utc).isoformat()
 
-    def _record_attempt(self, run_id: str, attempt_number: int, result: dict[str, Any]) -> None:
+    def _record_attempt(self, run_id: str, attempt_number: int, result: dict[str, Any], secrets: Iterable[str] = ()) -> None:
+        def redact(value: Any) -> str:
+            rendered = str(value or "")
+            for secret in secrets:
+                if secret:
+                    rendered = rendered.replace(secret, "[REDACTED]")
+            return rendered
         with self.database.transaction() as connection:
             connection.execute(
                 """INSERT INTO run_attempts(id,run_id,attempt_number,status,stdout,stderr,created_at)
@@ -53,8 +59,8 @@ class RunOrchestrator:
                 (
                     f"att_{uuid.uuid4().hex}", run_id, attempt_number,
                     "PASSED" if result.get("passed") else "FAILED",
-                    str(result.get("stdout", ""))[:100_000],
-                    str(result.get("stderr", ""))[:100_000],
+                    redact(result.get("stdout", ""))[:100_000],
+                    redact(result.get("stderr", ""))[:100_000],
                     self._now(),
                 ),
             )
@@ -144,7 +150,7 @@ class RunOrchestrator:
                     "status": RunStatus.NEEDS_ATTENTION.value,
                     "final_decision": f"Execution worker failed: {type(error).__name__}",
                 })
-            self._record_attempt(run["id"], 1, first)
+            self._record_attempt(run["id"], 1, first, execution_secrets)
             if first.get("passed"):
                 return self._finish(run["id"], {"status": RunStatus.PASSED.value, "attempt_count": 1})
 
@@ -190,7 +196,7 @@ class RunOrchestrator:
                     "attempt_count": 1,
                     "final_decision": f"Repair retry worker failed: {type(error).__name__}",
                 })
-            self._record_attempt(run["id"], 2, second)
+            self._record_attempt(run["id"], 2, second, execution_secrets)
             return self._finish(run["id"], {
                 "status": (RunStatus.PASSED_AFTER_REPAIR.value if second.get("passed") else RunStatus.NEEDS_ATTENTION.value),
                 "attempt_count": 2,

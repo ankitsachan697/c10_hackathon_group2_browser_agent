@@ -201,3 +201,34 @@ async def test_repair_retry_reuses_credentials_and_redacts_failure_packet(domain
     assert runner.calls[1]["env_vars"]["AUTH_PASSWORD"] == "Password123"
     assert "Password123" not in agents.repair_calls[0].traceback
     assert "student" not in agents.repair_calls[0].traceback
+
+
+@pytest.mark.asyncio
+async def test_run_registers_complete_evidence_without_credentials(domain, tmp_path):
+    database, _, journey = domain
+    vault = CredentialVault(base64.urlsafe_b64encode(b"d" * 32).decode())
+    JourneyRepository(database).set_credentials(journey["id"], vault.encrypt("student", "Password123"))
+
+    class EvidenceRunner(FakeRunner):
+        artifacts_dir = str(tmp_path)
+
+        async def execute_script(self, **kwargs):
+            run_dir = tmp_path / kwargs["execution_id"]
+            run_dir.mkdir(parents=True)
+            (run_dir / "step_1_landing.png").write_bytes(b"png")
+            (run_dir / "session_video.webm").write_bytes(b"video" * 200)
+            (run_dir / "execution.log").write_text("account=[REDACTED]")
+            return {**passing(), "run_dir": str(run_dir), "stdout": "student Password123"}
+
+    run = await RunOrchestrator(database, EvidenceRunner([passing()]), FakeAgents(), 30, credential_vault=vault).run_journey(
+        journey["id"], TriggerSource.ON_DEMAND
+    )
+    detail = RunRepository(database).get(run["id"])
+    with database.connect() as connection:
+        attempts = [dict(row) for row in connection.execute("SELECT * FROM run_attempts WHERE run_id=?", (run["id"],))]
+        artifacts = [dict(row) for row in connection.execute("SELECT * FROM artifacts WHERE run_id=?", (run["id"],))]
+
+    assert detail["script_snapshot"] == "print('saved')"
+    assert {item["kind"] for item in artifacts} == {"screenshot", "video", "log"}
+    assert len(attempts) == 1
+    assert "student" not in str(attempts) and "Password123" not in str(attempts)
