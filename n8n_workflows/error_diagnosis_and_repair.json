@@ -17,9 +17,9 @@
     {
       "parameters": {
         "promptType": "define",
-        "text": "={{ 'Original Script:\n' + $json.body.script + '\n\nError Trace:\n' + $json.body.errorTrace + '\n\nDOM Snapshot:\n' + ($json.body.domSnapshot || 'None') }}",
+                "text": "={{ JSON.stringify({ failure_category: $json.body.failure_category, error_excerpt: $json.body.error_excerpt, dom_excerpt: $json.body.dom_excerpt, script_excerpt: $json.body.script_excerpt, selectors: $json.body.selectors || [] }) }}",
         "options": {
-          "systemMessage": "=You are an Adaptive Self-Healing Playwright Engineer.\nYour job is to diagnose failing test runs (broken selectors, race conditions, timeout shifts) and return a repaired, fully working Python Playwright script.\n\nRules:\n1. Analyze why the locator or action failed.\n2. In the DOM snapshot, find better alternative locators (get_by_role, get_by_label, text, or multi-attribute CSS).\n3. Keep password parameters masked (use os.environ).\n4. Return JSON with 'root_cause', 'failure_category', 'recommended_fix', and 'repaired_script'."
+                    "systemMessage": "=You diagnose eligible Playwright failures from a bounded, redacted failure packet. Never infer or emit secrets. Make the smallest safe change and preserve assertions. Return a valid JSON object only with exactly these keys: root_cause, failure_category, recommended_fix, diff_summary, repaired_script."
         }
       },
       "type": "@n8n/n8n-nodes-langchain.agent",
@@ -32,25 +32,19 @@
       "parameters": {
         "model": {
           "__rl": true,
-          "value": "gpt-4o",
-          "mode": "list",
-          "cachedResultName": "gpt-4o"
+                    "value": "={{ $env.N8N_MODEL }}",
+                    "mode": "id"
         },
         "options": {
-          "temperature": 0.1
+                    "temperature": "={{ Number($env.N8N_TEMPERATURE) }}",
+                    "maxTokens": "={{ Number($env.N8N_MAX_TOKENS) }}"
         }
       },
       "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
       "typeVersion": 1.2,
       "position": [480, 500],
       "id": "openai-repair-model",
-      "name": "OpenAI GPT-4.1 Model",
-      "credentials": {
-        "openAiApi": {
-          "id": "p3HjGydOnUih77wo",
-          "name": "Trusota"
-        }
-      }
+            "name": "Configured OpenAI Model"
     },
     {
       "parameters": {
@@ -77,7 +71,7 @@
         ]
       ]
     },
-    "OpenAI GPT-4.1 Model": {
+        "Configured OpenAI Model": {
       "ai_languageModel": [
         [
           {

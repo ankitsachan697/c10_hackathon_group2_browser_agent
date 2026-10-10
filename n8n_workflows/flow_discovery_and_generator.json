@@ -17,9 +17,9 @@
     {
       "parameters": {
         "promptType": "define",
-        "text": "={{ $json.body.taskObjective }}",
+                "text": "={{ JSON.stringify({ target_url: $json.body.target_url, objective: $json.body.objective, credentials_meta: $json.body.credentials_meta || {} }) }}",
         "options": {
-          "systemMessage": "=You are an expert Flow Discovery and Playwright Script Generator Agent.\nTarget URL: {{ $json.body.url }}\nMasked Credentials Spec: {{ JSON.stringify($json.body.credentialsMeta) }}\n\nRules:\n1. Generate clean, standalone Python Playwright code.\n2. Mask all sensitive credentials in code using os.environ.get('AUTH_PASSWORD'). Never hardcode raw passwords.\n3. Include milestone screenshot captures and error DOM dump.\n4. Output valid JSON with 'discovered_steps', 'selectors', and 'python_script'."
+                    "systemMessage": "=You generate Python Playwright journeys from explicit user requests. Never embed credentials or secrets. Prefer role, label, and stable attribute locators. Return a valid JSON object only with exactly these keys: discovered_steps (string array), selectors (object), python_script (string)."
         }
       },
       "type": "@n8n/n8n-nodes-langchain.agent",
@@ -32,25 +32,19 @@
       "parameters": {
         "model": {
           "__rl": true,
-          "value": "gpt-4o",
-          "mode": "list",
-          "cachedResultName": "gpt-4o"
+                    "value": "={{ $env.N8N_MODEL }}",
+                    "mode": "id"
         },
         "options": {
-          "temperature": 0.2
+                    "temperature": "={{ Number($env.N8N_TEMPERATURE) }}",
+                    "maxTokens": "={{ Number($env.N8N_MAX_TOKENS) }}"
         }
       },
       "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
       "typeVersion": 1.2,
       "position": [480, 500],
       "id": "openai-model-node",
-      "name": "OpenAI GPT-4.1 Model",
-      "credentials": {
-        "openAiApi": {
-          "id": "p3HjGydOnUih77wo",
-          "name": "Trusota"
-        }
-      }
+            "name": "Configured OpenAI Model"
     },
     {
       "parameters": {
@@ -77,7 +71,7 @@
         ]
       ]
     },
-    "OpenAI GPT-4.1 Model": {
+        "Configured OpenAI Model": {
       "ai_languageModel": [
         [
           {

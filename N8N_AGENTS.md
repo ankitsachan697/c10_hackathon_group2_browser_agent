@@ -1,72 +1,26 @@
-# n8n AI Agent Workflows & Prompt Contracts
+# n8n agent contracts
 
-This document specifies the n8n AI Agent workflows deployed on **n8n Cloud** (`https://outskilltraining.app.n8n.cloud`) under Project Workspace `zfT8YECLWRQZn3UH`.
+n8n is optional and has two runtime responsibilities: explicit journey generation and one diagnosis/repair attempt after an eligible saved-script failure. Configure host, token, published agent IDs, model, token limit, temperature, and timeout at deployment.
 
----
+## Generation
 
-## 1. Cloud Infrastructure & MCP Setup
+Input is `{ "target_url": "...", "objective": "...", "credentials_meta": {} }`. Output must be a JSON object containing `discovered_steps` (string array), `selectors` (object), and `python_script` (string). Generation runs only after the user confirms the create-journey review step. Generated scripts read credentials from environment variables.
 
-* **n8n Host**: `https://outskilltraining.app.n8n.cloud`
-* **MCP Server Endpoint**: `https://outskilltraining.app.n8n.cloud/mcp-server/http`
-* **Workspace ID**: `zfT8YECLWRQZn3UH`
-* **AI Model**: OpenAI GPT-4.1
-* **Credential Name**: `Trusota` (ID: `p3HjGydOnUih77wo`)
+## Repair
 
----
+Input is a length-bounded, redacted object containing `failure_category`, `error_excerpt`, `dom_excerpt`, `script_excerpt`, and `selectors`. Output must contain `root_cause`, `failure_category`, `recommended_fix`, `diff_summary`, and `repaired_script`.
 
-## 2. Deployed Agent Workflows
+The backend determines eligibility, validates the response, and executes the repaired script once. Missing, malformed, timed-out, or unsuccessful repairs become `NEEDS_ATTENTION`.
 
-### Agent 1: Flow Discovery & Script Generator
-* **Workflow ID**: `QEzE1lGs9WbTU82H`
-* **Status**: Active / Published
-* **System Prompt Contract**:
-  ```text
-  You are an expert browser automation engineer specializing in Python Playwright.
-  Given a target URL, objective, and credential metadata:
-  1. Analyze user journey intent and discover the sequential steps required.
-  2. Synthesize clean, idiomatic Python Playwright code using sync_playwright.
-  3. NEVER embed plaintext credentials in code. Always bind:
-     username = os.environ.get("AUTH_USERNAME", "...")
-     password = os.environ.get("AUTH_PASSWORD", "...")
-  4. Use resilient selector strategies (role-based locators, text matching, and multi-attribute fallbacks with .first).
-  5. Capture step screenshots at key milestones:
-     - step_1_landing.png
-     - step_2_credentials_filled.png
-     - step_3_result.png
-  6. Return a strict JSON response containing discovered_steps array and python_script.
-  ```
+## Visual comparison
 
----
+Visual comparison is local and deterministic. `visual_regression_monitor.json` is inactive reference material and is not part of the runtime request path.
 
-### Agent 2: Error Diagnosis & Adaptive Repair
-* **Workflow ID**: `p3Sh9BmTzLMC0f8A`
-* **Status**: Active / Published
-* **System Prompt Contract**:
-  ```text
-  You are an autonomous Browser Automation Debugging & Repair Specialist.
-  Given a failed Playwright script, Python stack trace / stderr, and DOM snapshot:
-  1. Pinpoint the root cause (e.g. obsolete CSS selector, missing element, timing race condition).
-  2. Categorize the failure: BROKEN_SELECTOR, TIMEOUT, MISSING_AUTHENTICATION, or ASSERTION_MISMATCH.
-  3. Synthesize a repaired drop-in replacement Python Playwright script.
-  4. Ensure resilient locators are used with multi-attribute fallbacks.
-  5. Return JSON with root_cause, failure_category, recommended_fix, diff_summary, and repaired_script.
-  ```
+## Validate and deploy
 
----
+```bash
+PYTHONPATH=. backend/.venv/bin/pytest backend/tests/test_n8n_workflows.py -q
+python n8n_workflows/deploy_workflows.py --validate
+```
 
-### Agent 3: Visual Regression Monitor
-* **Workflow ID**: `bS5GQjs2LrNHrJZH`
-* **Status**: Active / Published
-* **Contract**:
-  - Validates image dimensions and RGBA channel alignment.
-  - Computes visual regression metrics and summarizes layout drift.
-  - Pairs with local Pixelmatch engine (`visual_diff.py`) for sub-pixel anti-aliasing heatmap generation.
-
----
-
-## 3. Local n8n Client Bridge (`n8n_client.py`)
-
-The backend connects to the published n8n Cloud agents via [n8n_client.py](file:///Users/asacha/Downloads/ai-accelerator-C10/browser-agent-platform/backend/n8n_client.py).
-
-* **Resilience & Fallback Strategy**:
-  If the remote n8n Cloud webhook or network encounters rate limits or latency, `n8n_client.py` gracefully engages a high-precision deterministic AST code generator and heuristic repair engine locally, ensuring that the platform remains operational in all network environments.
+After import, bind an OpenAI credential in n8n and set `N8N_MODEL`, `N8N_MAX_TOKENS`, and `N8N_TEMPERATURE` in its deployment environment. Store published IDs in the application environment as `N8N_DISCOVERY_AGENT_ID` and `N8N_REPAIR_AGENT_ID`.

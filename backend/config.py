@@ -84,6 +84,7 @@ class Settings:
     n8n_bearer_token: str | None
     n8n_model: str | None
     n8n_max_tokens: int | None
+    n8n_temperature: float | None
     n8n_timeout_seconds: int | None
     n8n_discovery_agent_id: str | None
     n8n_repair_agent_id: str | None
@@ -115,6 +116,7 @@ class Settings:
             n8n_bearer_token=_optional_env("N8N_BEARER_TOKEN"),
             n8n_model=_optional_env("N8N_MODEL"),
             n8n_max_tokens=_positive_int_from_env("N8N_MAX_TOKENS"),
+            n8n_temperature=_fraction_from_env("N8N_TEMPERATURE"),
             n8n_timeout_seconds=_positive_int_from_env("N8N_TIMEOUT_SECONDS"),
             n8n_discovery_agent_id=_optional_env("N8N_DISCOVERY_AGENT_ID"),
             n8n_repair_agent_id=_optional_env("N8N_REPAIR_AGENT_ID"),

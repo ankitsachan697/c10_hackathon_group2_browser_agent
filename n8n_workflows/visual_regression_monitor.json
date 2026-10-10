@@ -1,5 +1,6 @@
 {
-  "name": "Visual Regression Monitor Agent",
+    "name": "Visual Regression Monitor — Reference Only",
+    "active": false,
   "nodes": [
     {
       "parameters": {
@@ -62,6 +63,7 @@
     }
   },
   "settings": {
-    "executionOrder": "v1"
+        "executionOrder": "v1",
+        "runtimePath": false
   }
 }

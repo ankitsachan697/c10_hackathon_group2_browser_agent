@@ -6,11 +6,35 @@ Allows checking existing workflows, uploading new ones, or updating configuratio
 import os
 import sys
 import json
+import argparse
+from pathlib import Path
 import requests
 
 N8N_MCP_URL = os.getenv("N8N_MCP_URL")
 N8N_BEARER_TOKEN = os.getenv("N8N_BEARER_TOKEN")
 N8N_TIMEOUT_SECONDS = os.getenv("N8N_TIMEOUT_SECONDS")
+WORKFLOW_DIR = Path(__file__).resolve().parent
+RUNTIME_WORKFLOWS = ("flow_discovery_and_generator.json", "error_diagnosis_and_repair.json")
+
+
+def validate_workflows() -> list[str]:
+    errors = []
+    for filename in (*RUNTIME_WORKFLOWS, "visual_regression_monitor.json"):
+        try:
+            workflow = json.loads((WORKFLOW_DIR / filename).read_text())
+        except (OSError, json.JSONDecodeError) as exc:
+            errors.append(f"{filename}: {exc}")
+            continue
+        encoded = json.dumps(workflow)
+        if filename in RUNTIME_WORKFLOWS:
+            for variable in ("$env.N8N_MODEL", "$env.N8N_MAX_TOKENS", "$env.N8N_TEMPERATURE"):
+                if variable not in encoded:
+                    errors.append(f"{filename}: missing {variable}")
+            if any("credentials" in node for node in workflow.get("nodes", [])):
+                errors.append(f"{filename}: exported credentials are not allowed")
+        elif workflow.get("active") is not False or workflow.get("settings", {}).get("runtimePath") is not False:
+            errors.append(f"{filename}: visual workflow must remain reference-only")
+    return errors
 
 
 def call_mcp_tool(tool_name: str, args: dict):
@@ -58,4 +82,14 @@ def list_existing_workflows():
 
 
 if __name__ == "__main__":
-    list_existing_workflows()
+    parser = argparse.ArgumentParser(description="Validate or inspect configured n8n workflows")
+    parser.add_argument("--validate", action="store_true")
+    args = parser.parse_args()
+    if args.validate:
+        validation_errors = validate_workflows()
+        if validation_errors:
+            print("\n".join(validation_errors), file=sys.stderr)
+            raise SystemExit(1)
+        print("Workflow contracts are valid")
+    else:
+        list_existing_workflows()

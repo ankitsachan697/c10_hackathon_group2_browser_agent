@@ -17,6 +17,7 @@ def test_operational_settings_are_absent_until_explicitly_configured(monkeypatch
         "SCHEDULER_TIMEZONE",
         "N8N_MODEL",
         "N8N_MAX_TOKENS",
+        "N8N_TEMPERATURE",
         "N8N_TIMEOUT_SECONDS",
         "N8N_DISCOVERY_AGENT_ID",
         "N8N_REPAIR_AGENT_ID",
@@ -35,6 +36,7 @@ def test_operational_settings_are_absent_until_explicitly_configured(monkeypatch
     assert settings.scheduler_timezone is None
     assert settings.n8n_model is None
     assert settings.n8n_max_tokens is None
+    assert settings.n8n_temperature is None
     assert settings.n8n_timeout_seconds is None
     assert settings.n8n_discovery_agent_id is None
     assert settings.n8n_repair_agent_id is None
@@ -56,6 +58,7 @@ def test_n8n_generation_uses_configured_agent_and_limits(monkeypatch):
     monkeypatch.setenv("N8N_TIMEOUT_SECONDS", "15")
     monkeypatch.setenv("N8N_MODEL", "configured-model")
     monkeypatch.setenv("N8N_MAX_TOKENS", "321")
+    monkeypatch.setenv("N8N_TEMPERATURE", "0.15")
     monkeypatch.setenv("N8N_DISCOVERY_AGENT_ID", "discovery-agent")
     monkeypatch.setenv("ENABLE_N8N_GENERATION", "true")
     client = N8nClient(Settings.from_env())
@@ -74,6 +77,7 @@ def test_n8n_generation_uses_configured_agent_and_limits(monkeypatch):
     assert captured["arguments"]["agentId"] == "discovery-agent"
     assert captured["arguments"]["model"] == "configured-model"
     assert captured["arguments"]["maxTokens"] == 321
+    assert captured["arguments"]["temperature"] == 0.15
     assert result["agent_id"] == "discovery-agent"
 
 

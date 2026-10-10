@@ -95,6 +95,8 @@ class N8nClient:
             payload["arguments"]["model"] = self.settings.n8n_model
         if self.settings.n8n_max_tokens:
             payload["arguments"]["maxTokens"] = self.settings.n8n_max_tokens
+        if self.settings.n8n_temperature is not None:
+            payload["arguments"]["temperature"] = self.settings.n8n_temperature
         res = self.call_mcp_tool("call_agent", payload["arguments"])
         if isinstance(res, dict) and res.get("ok"):
             return res
@@ -159,13 +161,20 @@ class N8nClient:
         Diagnoses error stack trace and DOM snapshot to patch broken selectors/timing.
         """
         if hasattr(packet, "original_script"):
-            packet_data = asdict(packet)
-            original_script = packet_data["original_script"]
-            error_trace = packet_data["traceback"]
-            dom_snapshot = packet_data["dom_excerpt"]
+            raw_packet = asdict(packet)
+            original_script = raw_packet["original_script"]
+            error_trace = raw_packet["traceback"]
+            dom_snapshot = raw_packet["dom_excerpt"]
+            packet_data = {
+                "failure_category": raw_packet["category"],
+                "error_excerpt": raw_packet["traceback"],
+                "dom_excerpt": raw_packet["dom_excerpt"],
+                "script_excerpt": raw_packet["original_script"],
+                "selectors": raw_packet["locator_evidence"],
+            }
         else:
             original_script = str(packet)
-            packet_data = {"original_script": original_script, "traceback": error_trace or "", "dom_excerpt": dom_snapshot}
+            packet_data = {"failure_category": "UNKNOWN", "error_excerpt": error_trace or "", "dom_excerpt": dom_snapshot, "script_excerpt": original_script, "selectors": []}
         diagnosis = self._analyze_failure(error_trace or "", dom_snapshot)
         agent_response = None
         if self.settings.enable_n8n_repair:
