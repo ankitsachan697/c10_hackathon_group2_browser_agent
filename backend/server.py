@@ -24,6 +24,7 @@ import json
 import time
 import asyncio
 from dataclasses import replace
+from contextlib import asynccontextmanager
 from typing import Dict, Any, List, Optional
 from fastapi import FastAPI, HTTPException, Request, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
@@ -38,14 +39,34 @@ from visual_diff import compare_images
 from n8n_client import N8nClient
 from test_suite_manager import suite_manager
 from failure_context import build_failure_packet
+from database import Database
+from orchestrator import RunOrchestrator
+from scheduler import APSchedulerAdapter, ScheduleService
 
 settings = Settings.from_env()
 n8n_client = N8nClient(settings)
+schedule_service = None
+
+
+@asynccontextmanager
+async def lifespan(application: FastAPI):
+    if schedule_service:
+        schedule_service.start()
+        application.state.scheduler_ready = True
+    else:
+        application.state.scheduler_ready = False
+    try:
+        yield
+    finally:
+        if schedule_service:
+            schedule_service.shutdown()
+        application.state.scheduler_ready = False
 
 app = FastAPI(
     title=settings.product_name or "API",
     description="Backend orchestration engine for browser automation agents",
     version="1.0.0",
+    lifespan=lifespan,
 )
 
 app.add_middleware(
@@ -59,6 +80,13 @@ app.add_middleware(
 ARTIFACTS_DIR = str(settings.artifacts_root)
 os.makedirs(ARTIFACTS_DIR, exist_ok=True)
 runner = PlaywrightRunner(artifacts_dir=ARTIFACTS_DIR)
+domain_database = Database(settings.database_path)
+domain_database.initialize()
+if settings.runner_timeout_seconds is not None:
+    run_orchestrator = RunOrchestrator(domain_database, runner, n8n_client, settings.runner_timeout_seconds)
+    schedule_service = ScheduleService(domain_database, run_orchestrator, APSchedulerAdapter())
+else:
+    run_orchestrator = None
 
 # In-memory log buffer for streaming logs to frontend
 active_run_logs: Dict[str, List[Dict[str, Any]]] = {}
@@ -144,8 +172,9 @@ def health_check():
     return {
         "status": "healthy",
         "timestamp": time.time(),
-        "runner_ready": True,
+        "runner_ready": settings.runner_timeout_seconds is not None,
         "n8n_connected": n8n_client.is_configured,
+        "scheduler_ready": bool(schedule_service and getattr(app.state, "scheduler_ready", False)),
     }
 
 

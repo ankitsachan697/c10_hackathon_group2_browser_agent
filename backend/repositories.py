@@ -122,6 +122,21 @@ class ScheduleRepository(_Repository):
             )
         return self.get(resource_id)
 
+    def update(self, resource_id: str, changes: dict[str, Any]):
+        allowed = {"local_time", "timezone", "enabled", "overlap_policy", "next_run", "last_run"}
+        updates = {key: (int(value) if key == "enabled" else value) for key, value in changes.items() if key in allowed}
+        if not updates or not self.get(resource_id):
+            return self.get(resource_id)
+        updates["updated_at"] = _now()
+        assignments = ", ".join(f"{key} = ?" for key in updates)
+        with self.database.transaction() as connection:
+            connection.execute(f"UPDATE schedules SET {assignments} WHERE id = ?", (*updates.values(), resource_id))
+        return self.get(resource_id)
+
+    def list_enabled(self):
+        with self.database.connect() as connection:
+            return [_row(row) for row in connection.execute("SELECT * FROM schedules WHERE enabled = 1")]
+
 
 class RunRepository(_Repository):
     table = "runs"
