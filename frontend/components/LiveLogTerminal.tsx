@@ -19,7 +19,7 @@ export function LiveLogTerminal({ logs, onClear }: Props) {
   const [selectedAgent, setSelectedAgent] = useState<string>("ALL");
   const [searchQuery, setSearchQuery] = useState("");
   const [copied, setCopied] = useState(false);
-  const [autoScroll, setAutoScroll] = useState(true);
+  const [autoScroll] = useState(true);
   const bottomRef = useRef<HTMLDivElement>(null);
 
   const agentsList = ["ALL", "Flow Discovery Agent", "Script Generator Agent", "Execution Agent", "Error Diagnosis Agent", "Adaptive Repair Agent", "Regression Monitor Agent", "Orchestrator"];

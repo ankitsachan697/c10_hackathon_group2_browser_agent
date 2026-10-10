@@ -46,6 +46,8 @@ export function ScriptDiffViewer({
   // Sync active code to editable textarea
   useEffect(() => {
     const code = activeTab === "healed" && healedScript ? healedScript : originalScript;
+    // Sync the editor buffer when the selected script source changes.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setEditableCode(code || "");
   }, [originalScript, healedScript, activeTab]);
 
