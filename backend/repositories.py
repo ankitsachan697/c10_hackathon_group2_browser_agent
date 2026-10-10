@@ -78,13 +78,40 @@ class ProjectRepository(_Repository):
 class JourneyRepository(_Repository):
     table = "journeys"
 
+    @staticmethod
+    def _public(value):
+        if not value:
+            return value
+        result = dict(value)
+        result["has_credentials"] = bool(result.pop("credential_ciphertext", None))
+        return result
+
+    def get_with_credentials(self, resource_id: str):
+        return super().get(resource_id)
+
+    def get(self, resource_id: str):
+        return self._public(self.get_with_credentials(resource_id))
+
+    def list(self):
+        return [self._public(value) for value in super().list()]
+
     def create(self, data: dict[str, Any]):
         resource_id, now = data.get("id") or _id("jrn"), _now()
         with self.database.transaction() as connection:
             connection.execute(
-                """INSERT INTO journeys(id,project_id,name,objective,target_url,script,script_version,active,browser_json,visual_threshold,baseline_state,created_at,updated_at)
-                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-                (resource_id, data["project_id"], data["name"], data.get("objective", ""), data["target_url"], data.get("script", ""), data.get("script_version", 1), int(data.get("active", True)), json.dumps(data.get("browser", {})), data.get("visual_threshold"), data.get("baseline_state"), now, now),
+                """INSERT INTO journeys(id,project_id,name,objective,target_url,script,script_version,active,browser_json,visual_threshold,baseline_state,credential_ciphertext,created_at,updated_at)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                (resource_id, data["project_id"], data["name"], data.get("objective", ""), data["target_url"], data.get("script", ""), data.get("script_version", 1), int(data.get("active", True)), json.dumps(data.get("browser", {})), data.get("visual_threshold"), data.get("baseline_state"), data.get("credential_ciphertext"), now, now),
+            )
+        return self.get(resource_id)
+
+    def set_credentials(self, resource_id: str, ciphertext: str | None):
+        if not self.get_with_credentials(resource_id):
+            return None
+        with self.database.transaction() as connection:
+            connection.execute(
+                "UPDATE journeys SET credential_ciphertext=?, updated_at=? WHERE id=?",
+                (ciphertext, _now(), resource_id),
             )
         return self.get(resource_id)
 
@@ -104,7 +131,7 @@ class JourneyRepository(_Repository):
 
     def list_for_project(self, project_id: str):
         with self.database.connect() as connection:
-            return [_row(row) for row in connection.execute(
+            return [self._public(_row(row)) for row in connection.execute(
                 "SELECT * FROM journeys WHERE project_id = ? AND active = 1 ORDER BY created_at", (project_id,)
             )]
 

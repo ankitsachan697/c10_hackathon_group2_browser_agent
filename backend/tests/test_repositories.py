@@ -1,4 +1,5 @@
 from pathlib import Path
+import sqlite3
 
 import pytest
 
@@ -91,3 +92,46 @@ def test_project_delete_cascades_in_one_transaction(store):
     assert schedules.get(schedule["id"]) is None
     assert runs.get(run["id"]) is None
 
+
+def test_existing_database_adds_journey_credential_storage_in_place(tmp_path):
+    path = tmp_path / "legacy.db"
+    with sqlite3.connect(path) as connection:
+        connection.executescript("""
+            CREATE TABLE schema_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+            INSERT INTO schema_meta VALUES ('schema_version', '1');
+            CREATE TABLE journeys (
+              id TEXT PRIMARY KEY, project_id TEXT NOT NULL, name TEXT NOT NULL,
+              objective TEXT NOT NULL DEFAULT '', target_url TEXT NOT NULL,
+              script TEXT NOT NULL, script_version INTEGER NOT NULL DEFAULT 1,
+              active INTEGER NOT NULL DEFAULT 1, browser_json TEXT NOT NULL DEFAULT '{}',
+              visual_threshold REAL, baseline_state TEXT, created_at TEXT NOT NULL,
+              updated_at TEXT NOT NULL
+            );
+        """)
+
+    database = Database(path)
+    database.initialize()
+    database.initialize()
+
+    with database.connect() as connection:
+        columns = {row[1] for row in connection.execute("PRAGMA table_info(journeys)")}
+        version = connection.execute("SELECT value FROM schema_meta WHERE key='schema_version'").fetchone()[0]
+    assert "credential_ciphertext" in columns
+    assert version == "2"
+
+
+def test_journey_repository_keeps_ciphertext_private(store):
+    projects = ProjectRepository(store)
+    journeys = JourneyRepository(store)
+    project = projects.create({"name": "Authentication"})
+    journey = journeys.create({
+        "project_id": project["id"], "name": "Login", "target_url": "https://app.invalid", "script": "pass"
+    })
+
+    updated = journeys.set_credentials(journey["id"], "opaque-ciphertext")
+
+    assert updated["has_credentials"] is True
+    assert "credential_ciphertext" not in updated
+    assert "credential_ciphertext" not in journeys.get(journey["id"])
+    assert "credential_ciphertext" not in journeys.list()[0]
+    assert journeys.get_with_credentials(journey["id"])["credential_ciphertext"] == "opaque-ciphertext"

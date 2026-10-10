@@ -26,7 +26,7 @@ CREATE TABLE IF NOT EXISTS journeys (
   id TEXT PRIMARY KEY, project_id TEXT NOT NULL, name TEXT NOT NULL, objective TEXT NOT NULL DEFAULT '',
   target_url TEXT NOT NULL, script TEXT NOT NULL, script_version INTEGER NOT NULL DEFAULT 1,
   active INTEGER NOT NULL DEFAULT 1, browser_json TEXT NOT NULL DEFAULT '{}', visual_threshold REAL,
-  baseline_state TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+  baseline_state TEXT, credential_ciphertext TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
   FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE
 );
 CREATE TABLE IF NOT EXISTS schedules (
@@ -78,6 +78,13 @@ class Database:
     def initialize(self) -> None:
         with self.connect() as connection:
             connection.executescript(SCHEMA)
+            journey_columns = {row[1] for row in connection.execute("PRAGMA table_info(journeys)")}
+            if "credential_ciphertext" not in journey_columns:
+                connection.execute("ALTER TABLE journeys ADD COLUMN credential_ciphertext TEXT")
+            connection.execute(
+                "INSERT INTO schema_meta(key,value) VALUES ('schema_version','2') "
+                "ON CONFLICT(key) DO UPDATE SET value='2'"
+            )
             schedule_fk = next(
                 (row for row in connection.execute("PRAGMA foreign_key_list(runs)") if row[3] == "schedule_id"),
                 None,
