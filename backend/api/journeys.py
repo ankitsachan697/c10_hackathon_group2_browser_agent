@@ -23,6 +23,11 @@ class JourneyGenerate(JourneyCreate):
     script: str = ""
 
 
+class JourneyCredentials(BaseModel):
+    username: str = Field(min_length=1)
+    password: str = Field(min_length=1)
+
+
 def _journey(repo, resource_id):
     value = repo.get(resource_id)
     if not value:
@@ -75,8 +80,17 @@ def get_journey(journey_id: str, svc: AppServices = Depends(services)):
 def regenerate(journey_id: str, svc: AppServices = Depends(services)):
     repo = JourneyRepository(svc.database)
     journey = _journey(repo, journey_id)
-    generated = svc.agents.generate_flow_script(url=journey["target_url"], task_objective=journey["objective"], credentials_meta={})
+    generated = svc.agents.generate_flow_script(url=journey["target_url"], task_objective=journey["objective"], credentials_meta={"has_auth": journey["has_credentials"]})
     return ok(repo.update(journey_id, {"script": generated["python_script"]}))
+
+
+@router.put("/{journey_id}/credentials")
+def replace_credentials(journey_id: str, payload: JourneyCredentials, svc: AppServices = Depends(services)):
+    repo = JourneyRepository(svc.database)
+    _journey(repo, journey_id)
+    if not svc.credential_vault:
+        raise HTTPException(503, detail=error("CREDENTIAL_VAULT_UNAVAILABLE", "Credential encryption is not configured"))
+    return ok(repo.set_credentials(journey_id, svc.credential_vault.encrypt(payload.username, payload.password)))
 
 
 @router.post("/{journey_id}/run")

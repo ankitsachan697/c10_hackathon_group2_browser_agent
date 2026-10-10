@@ -15,7 +15,8 @@ The API uses `{ "data": ..., "error": null, "meta": {} }`. Failures use the same
 
 - `GET|POST /api/journeys` — list or create saved journeys.
 - `POST /api/journeys/generate` — explicitly generate and save a journey.
-- `GET|PATCH|DELETE /api/journeys/{id}` — inspect, update, or delete.
+- `GET|DELETE /api/journeys/{id}` — inspect or delete.
+- `PUT /api/journeys/{id}/credentials` — replace the encrypted username/password pair without returning it.
 - `POST /api/journeys/{id}/run` — execute the saved script directly.
 
 Journey create and generate requests optionally accept `username` and `password`. They must be supplied together. Responses never return either value or the stored ciphertext; `has_credentials` indicates whether an encrypted credential pair exists. A missing encryption key returns `CREDENTIAL_VAULT_UNAVAILABLE` without persisting plaintext.

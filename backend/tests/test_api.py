@@ -165,6 +165,18 @@ def test_saved_journey_credentials_are_injected_into_runner_only(api):
     assert set(call["secrets"]) == {"student", "Password123"}
 
 
+def test_credentials_can_be_replaced_without_returning_plaintext(api):
+    client, services = api
+    _, journey = create_journey(client)
+    response = client.put(f"/api/journeys/{journey['id']}/credentials", json={"username": "replacement-user", "password": "replacement-secret"})
+    assert response.status_code == 200
+    assert response.json()["data"]["has_credentials"] is True
+    rendered = response.text
+    assert "replacement-user" not in rendered and "replacement-secret" not in rendered
+    client.post(f"/api/journeys/{journey['id']}/regenerate")
+    assert services.agents.generation_arguments[-1]["credentials_meta"] == {"has_auth": True}
+
+
 def test_daily_schedule_crud_and_run_now(api):
     client, _ = api
     _, journey = create_journey(client)

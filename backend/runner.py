@@ -16,6 +16,7 @@ import uuid
 import shutil
 import asyncio
 import traceback
+import ast
 from typing import Dict, Any, List, Optional, Callable
 
 
@@ -55,6 +56,44 @@ class SecretRedactor:
             flags=re.IGNORECASE
         )
         return sanitized
+
+
+class UnsafeScriptError(ValueError):
+    """Raised when a saved script requests capabilities outside browser automation."""
+
+
+def validate_browser_script(script: str) -> None:
+    """Allow Playwright automation while denying host/network/process escape primitives."""
+    tree = ast.parse(script)
+    allowed_imports = {"os", "sys", "re", "time", "json", "playwright.sync_api"}
+    blocked_calls = {"eval", "exec", "compile", "__import__", "input", "breakpoint", "open"}
+    blocked_roots = {"subprocess", "socket", "pathlib", "requests", "urllib", "http", "shutil"}
+    allowed_os = {"environ", "getenv", "makedirs", "path"}
+    allowed_os_path = {"join", "basename", "dirname", "exists"}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            if any(alias.name not in allowed_imports for alias in node.names):
+                raise UnsafeScriptError("Script imports a module outside the browser automation allowlist")
+        elif isinstance(node, ast.ImportFrom):
+            if (node.module or "") not in allowed_imports:
+                raise UnsafeScriptError("Script imports a module outside the browser automation allowlist")
+        elif isinstance(node, ast.Name) and node.id in blocked_roots:
+            raise UnsafeScriptError(f"Script capability is not allowed: {node.id}")
+        elif isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id in blocked_calls:
+            raise UnsafeScriptError(f"Script capability is not allowed: {node.func.id}")
+        elif isinstance(node, ast.Attribute):
+            if node.attr.startswith("__"):
+                raise UnsafeScriptError("Dunder attribute access is not allowed")
+            if isinstance(node.value, ast.Name) and node.value.id == "os" and node.attr not in allowed_os:
+                raise UnsafeScriptError(f"os.{node.attr} is not allowed")
+            if (
+                isinstance(node.value, ast.Attribute)
+                and isinstance(node.value.value, ast.Name)
+                and node.value.value.id == "os"
+                and node.value.attr == "path"
+                and node.attr not in allowed_os_path
+            ):
+                raise UnsafeScriptError(f"os.path.{node.attr} is not allowed")
 
 
 class PlaywrightRunner:
@@ -108,6 +147,8 @@ class PlaywrightRunner:
 
         emit_log("INFO", f"🚀 Initializing Playwright execution environment for {run_id}")
         emit_log("INFO", f"🔒 Secret Redactor activated. All credentials masked in real-time logs.")
+
+        validate_browser_script(script_code)
 
         # Ensure script saves artifacts to run_dir if not explicitly set
         script_path = os.path.join(run_dir, "test_script.py")
@@ -211,6 +252,10 @@ class PlaywrightRunner:
         if os.path.exists(dom_snapshot_file):
             with open(dom_snapshot_file, "r", encoding="utf-8", errors="replace") as f:
                 dom_snapshot = f.read(50000)  # Max 50KB summary
+            sanitized = redactor.redact(dom_snapshot)
+            with open(dom_snapshot_file, "w", encoding="utf-8") as f:
+                f.write(sanitized)
+            dom_snapshot = sanitized
 
         passed = (exit_code == 0)
         status_label = "PASSED" if passed else "FAILED"

@@ -75,6 +75,12 @@ class RunOrchestrator:
         for path in run_dir.rglob("*"):
             if not path.is_file() or path.name == "test_script.py":
                 continue
+            if path.suffix.lower() in {".txt", ".log", ".html", ".htm", ".json"}:
+                rendered = path.read_text(encoding="utf-8", errors="replace")
+                for secret in secrets:
+                    if secret:
+                        rendered = rendered.replace(secret, "[REDACTED]")
+                path.write_text(rendered, encoding="utf-8")
             relative = path.relative_to(root).as_posix()
             kind = (
                 "screenshot" if path.suffix.lower() in {".png", ".jpg", ".jpeg"}
@@ -114,14 +120,6 @@ class RunOrchestrator:
         scope = f"journey:{journey_id}"
         await self._claim(scope)
         try:
-            env_vars: dict[str, str] = {}
-            execution_secrets = list(secrets)
-            if journey.get("credential_ciphertext"):
-                if not self.credential_vault:
-                    raise RuntimeError("Journey credentials are configured but the credential vault is unavailable")
-                username, password = self.credential_vault.decrypt(journey["credential_ciphertext"])
-                env_vars = {"AUTH_USERNAME": username, "AUTH_PASSWORD": password}
-                execution_secrets.extend((username, password))
             trigger_value = trigger.value if isinstance(trigger, TriggerSource) else str(trigger)
             script, version = journey["script"], journey["script_version"]
             if trigger_value == TriggerSource.RERUN_SNAPSHOT.value and script_version:
@@ -130,14 +128,21 @@ class RunOrchestrator:
                     raise KeyError(script_version)
                 script, version = historic["script_snapshot"], historic["script_version"]
             run = self.runs.create({
-                "journey_id": journey_id,
-                "project_id": journey["project_id"],
-                "schedule_id": schedule_id,
-                "trigger_source": trigger_value,
-                "status": RunStatus.QUEUED.value,
-                "script_snapshot": script,
-                "script_version": version,
+                "journey_id": journey_id, "project_id": journey["project_id"], "schedule_id": schedule_id,
+                "trigger_source": trigger_value, "status": RunStatus.QUEUED.value,
+                "script_snapshot": script, "script_version": version,
             })
+            env_vars: dict[str, str] = {}
+            execution_secrets = list(secrets)
+            if journey.get("credential_ciphertext"):
+                if not self.credential_vault:
+                    return self._finish(run["id"], {"status": RunStatus.NEEDS_ATTENTION.value, "final_decision": "Credential vault unavailable"})
+                try:
+                    username, password = self.credential_vault.decrypt(journey["credential_ciphertext"])
+                except Exception:
+                    return self._finish(run["id"], {"status": RunStatus.NEEDS_ATTENTION.value, "final_decision": "Credential decryption failed"})
+                env_vars = {"AUTH_USERNAME": username, "AUTH_PASSWORD": password}
+                execution_secrets.extend((username, password))
             self.runs.update(run["id"], {"status": RunStatus.RUNNING.value, "started_at": self._now()})
             try:
                 first = await self.runner.execute_script(

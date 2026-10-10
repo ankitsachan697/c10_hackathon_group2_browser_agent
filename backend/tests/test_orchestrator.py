@@ -217,7 +217,7 @@ async def test_run_registers_complete_evidence_without_credentials(domain, tmp_p
             run_dir.mkdir(parents=True)
             (run_dir / "step_1_landing.png").write_bytes(b"png")
             (run_dir / "session_video.webm").write_bytes(b"video" * 200)
-            (run_dir / "execution.log").write_text("account=[REDACTED]")
+            (run_dir / "execution.log").write_text("account=student password=Password123")
             return {**passing(), "run_dir": str(run_dir), "stdout": "student Password123"}
 
     run = await RunOrchestrator(database, EvidenceRunner([passing()]), FakeAgents(), 30, credential_vault=vault).run_journey(
@@ -232,3 +232,19 @@ async def test_run_registers_complete_evidence_without_credentials(domain, tmp_p
     assert {item["kind"] for item in artifacts} == {"screenshot", "video", "log"}
     assert len(attempts) == 1
     assert "student" not in str(attempts) and "Password123" not in str(attempts)
+    assert "student" not in (tmp_path / run["id"] / "attempt-1" / "execution.log").read_text()
+    assert "Password123" not in (tmp_path / run["id"] / "attempt-1" / "execution.log").read_text()
+
+
+@pytest.mark.asyncio
+async def test_missing_vault_creates_auditable_needs_attention_run(domain):
+    database, _, journey = domain
+    vault = CredentialVault(base64.urlsafe_b64encode(b"e" * 32).decode())
+    JourneyRepository(database).set_credentials(journey["id"], vault.encrypt("student", "Password123"))
+
+    run = await RunOrchestrator(database, FakeRunner([]), FakeAgents(), 30, credential_vault=None).run_journey(
+        journey["id"], TriggerSource.SCHEDULED
+    )
+
+    assert run["status"] == RunStatus.NEEDS_ATTENTION
+    assert run["final_decision"] == "Credential vault unavailable"

@@ -196,6 +196,7 @@ def health_check():
         "browser_mode": "remote_cdp" if settings.playwright_cdp_endpoint else "local",
         "n8n_connected": n8n_client.is_configured,
         "scheduler_ready": bool(schedule_service and getattr(app.state, "scheduler_ready", False)),
+        "credential_vault_ready": credential_vault is not None,
     }
 
 
@@ -254,14 +255,8 @@ async def execute_script(req: ExecuteRequest):
 
 @app.post("/api/diagnose-and-repair")
 async def diagnose_and_repair(req: RepairRequest):
-    """Standalone Agent 3: Error Diagnosis & Adaptive Repair"""
-    packet = replace(build_failure_packet({
-        "stderr": req.error_trace,
-        "dom_snapshot": req.dom_snapshot or "",
-        "screenshots": [req.screenshot_path] if req.screenshot_path else [],
-    }), original_script=req.original_script)
-    res = n8n_client.diagnose_and_repair(packet)
-    return res
+    """Retired: repairs are issued only by the run orchestrator."""
+    raise HTTPException(status_code=410, detail="Standalone repair is retired; run a saved journey instead.")
 
 
 @app.post("/api/visual-diff")

@@ -13,7 +13,24 @@ export function CreateProjectDialog({ open, onClose, onCreated }: {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const nameRef = useRef<HTMLInputElement>(null);
-  useEffect(() => { if (open) nameRef.current?.focus(); }, [open]);
+  const dialogRef = useRef<HTMLFormElement>(null);
+  const previousFocus = useRef<HTMLElement | null>(null);
+  useEffect(() => {
+    if (!open) return;
+    previousFocus.current = document.activeElement as HTMLElement;
+    nameRef.current?.focus();
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") { event.preventDefault(); onClose(); return; }
+      if (event.key !== "Tab") return;
+      const focusable = Array.from(dialogRef.current?.querySelectorAll<HTMLElement>('input, textarea, button:not([disabled])') ?? []);
+      if (!focusable.length) return;
+      const first = focusable[0], last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => { document.removeEventListener("keydown", onKeyDown); previousFocus.current?.focus(); };
+  }, [open, onClose]);
   if (!open) return null;
   const submit = async (event: FormEvent) => {
     event.preventDefault();
@@ -28,7 +45,7 @@ export function CreateProjectDialog({ open, onClose, onCreated }: {
     finally { setBusy(false); }
   };
   return <div className="dialog-backdrop" onMouseDown={event => event.target === event.currentTarget && onClose()}>
-    <form role="dialog" aria-modal="true" aria-labelledby="create-project-title" className="dialog" onSubmit={submit}>
+    <form ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="create-project-title" className="dialog" onSubmit={submit}>
       <p className="eyebrow">Organize reusable journeys</p>
       <h2 id="create-project-title">Create project</h2>
       <div className="dialog-form">

@@ -1,4 +1,4 @@
-from backend.runner import PlaywrightRunner
+from backend.runner import PlaywrightRunner, UnsafeScriptError, validate_browser_script
 import pytest
 
 
@@ -59,3 +59,18 @@ async def test_runner_redacts_username_and_password_from_all_output(tmp_path):
     rendered = str(result)
     assert "student" not in rendered
     assert "Password123" not in rendered
+
+
+@pytest.mark.parametrize("script", [
+    "import subprocess\nsubprocess.run(['id'])",
+    "import socket\nsocket.create_connection(('example.com', 80))",
+    "open('/etc/passwd').read()",
+    "().__class__.__mro__",
+])
+def test_script_policy_blocks_host_escape_primitives(script):
+    with pytest.raises(UnsafeScriptError):
+        validate_browser_script(script)
+
+
+def test_script_policy_allows_playwright_and_scoped_artifacts():
+    validate_browser_script("import os\nfrom playwright.sync_api import sync_playwright\nos.makedirs(os.path.join(os.environ.get('ARTIFACTS_DIR'), 'shots'))")

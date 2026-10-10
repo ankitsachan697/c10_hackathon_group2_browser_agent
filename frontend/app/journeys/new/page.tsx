@@ -21,7 +21,6 @@ export default function JourneyCreatePage() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
-  const [headed, setHeaded] = useState(false);
   const [result, setResult] = useState<{ script: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const [submitError, setSubmitError] = useState("");
@@ -49,7 +48,7 @@ export default function JourneyCreatePage() {
     try {
       setResult(await api("/api/journeys/generate", {
         method: "POST",
-        body: JSON.stringify({ project_id: projectId, name, target_url: url, objective, username: username || undefined, password: password || undefined, browser: { headed } }),
+        body: JSON.stringify({ project_id: projectId, name, target_url: url, objective, username: username || undefined, password: password || undefined }),
       }));
     } catch (value) { setSubmitError(value instanceof Error ? value.message : "Journey generation failed"); }
     finally { setBusy(false); }
@@ -71,7 +70,6 @@ export default function JourneyCreatePage() {
           <label>Engine<select><option>Playwright · Chromium</option></select></label><label>Viewport<select><option>Desktop · 1440 × 900</option></select></label>
           <label>Username<input aria-label="Username" autoComplete="username" value={username} onChange={event => setUsername(event.target.value)}/></label>
           <label>Password<div className="password-field"><input aria-label="Password" autoComplete="current-password" type={showPassword ? "text" : "password"} value={password} onChange={event => setPassword(event.target.value)}/><button type="button" aria-label={showPassword ? "Hide password" : "Show password"} onClick={() => setShowPassword(value => !value)}>{showPassword ? <EyeOff size={16}/> : <Eye size={16}/>}</button></div></label>
-          <label className="check-row full"><input type="checkbox" checked={headed} onChange={event => setHeaded(event.target.checked)}/>Show browser while running</label>
           <p className="full muted">Credentials are encrypted at rest and injected only into the isolated browser worker. They are never written into the Playwright script or sent to n8n.</p>
         </div>}
         {step === 3 && !result && <div className="review-grid"><div><span>Project</span><strong>{projects.find(project => project.id === projectId)?.name}</strong></div><div><span>Name</span><strong>{name}</strong></div><div><span>Target</span><strong>{url}</strong></div><div><span>Credentials</span><strong>{username ? `${username} · ${password ? "••••••••" : "No password"}` : "Not provided"}</strong></div><div className="full"><span>Objective</span><strong>{objective}</strong></div></div>}

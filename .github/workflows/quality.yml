@@ -7,9 +7,6 @@ on:
 jobs:
   verify:
     runs-on: ubuntu-latest
-    env:
-      N8N_BEARER_TOKEN: ${{ secrets.N8N_BEARER_TOKEN }}
-      CREDENTIAL_ENCRYPTION_KEY: ${{ secrets.CREDENTIAL_ENCRYPTION_KEY }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -25,18 +22,7 @@ jobs:
       - run: python n8n_workflows/deploy_workflows.py --validate
 
   live-login:
-    if: ${{ secrets.CREDENTIAL_ENCRYPTION_KEY != '' && secrets.E2E_LOGIN_USERNAME != '' && secrets.E2E_LOGIN_PASSWORD != '' }}
     runs-on: ubuntu-latest
-    env:
-      CREDENTIAL_ENCRYPTION_KEY: ${{ secrets.CREDENTIAL_ENCRYPTION_KEY }}
-      E2E_LOGIN_USERNAME: ${{ secrets.E2E_LOGIN_USERNAME }}
-      E2E_LOGIN_PASSWORD: ${{ secrets.E2E_LOGIN_PASSWORD }}
-      DATABASE_PATH: ${{ runner.temp }}/browser-automation.db
-      ARTIFACTS_ROOT: ${{ runner.temp }}/artifacts
-      ARTIFACT_TRASH_ROOT: ${{ runner.temp }}/trash
-      PLAYWRIGHT_API_URL: http://127.0.0.1:8100
-      PLAYWRIGHT_BASE_URL: http://127.0.0.1:3100
-      BACKEND_INTERNAL_URL: http://127.0.0.1:8100
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -47,6 +33,22 @@ jobs:
       - run: npm ci --prefix frontend
       - run: python -m playwright install --with-deps chromium
       - run: npm --prefix frontend exec playwright install chromium
-      - run: PYTHONPATH=. python -m uvicorn backend.server:app --host 127.0.0.1 --port 8100 &
-      - run: npm --prefix frontend run dev -- --hostname 127.0.0.1 --port 3100 &
-      - run: npm --prefix frontend exec playwright test -- --grep "first-time secure login"
+      - name: Run live login acceptance
+        env:
+          CREDENTIAL_ENCRYPTION_KEY: ${{ secrets.CREDENTIAL_ENCRYPTION_KEY }}
+          E2E_LOGIN_USERNAME: ${{ secrets.E2E_LOGIN_USERNAME }}
+          E2E_LOGIN_PASSWORD: ${{ secrets.E2E_LOGIN_PASSWORD }}
+          DATABASE_PATH: ${{ runner.temp }}/browser-automation.db
+          ARTIFACTS_ROOT: ${{ runner.temp }}/artifacts
+          ARTIFACT_TRASH_ROOT: ${{ runner.temp }}/trash
+          PLAYWRIGHT_API_URL: http://127.0.0.1:8100
+          PLAYWRIGHT_BASE_URL: http://127.0.0.1:3100
+          BACKEND_INTERNAL_URL: http://127.0.0.1:8100
+        run: |
+          if [ -z "$CREDENTIAL_ENCRYPTION_KEY" ] || [ -z "$E2E_LOGIN_USERNAME" ] || [ -z "$E2E_LOGIN_PASSWORD" ]; then echo "Live credentials are not configured; skipping."; exit 0; fi
+          PYTHONPATH=. python -m uvicorn backend.server:app --host 127.0.0.1 --port 8100 &
+          npm --prefix frontend run dev -- --hostname 127.0.0.1 --port 3100 &
+          for i in $(seq 1 30); do curl -fsS http://127.0.0.1:8100/api/health && curl -fsS http://127.0.0.1:3100/ && break; sleep 1; done
+          curl -fsS http://127.0.0.1:8100/api/health
+          curl -fsS http://127.0.0.1:3100/
+          npm --prefix frontend exec playwright test -- --grep "first-time secure login"

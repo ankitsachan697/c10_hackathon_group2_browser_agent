@@ -28,9 +28,14 @@ test("offers new project from a populated selector", async () => {
   vi.stubGlobal("fetch", vi.fn(async () => envelope([{ id: "p1", name: "Existing", description: "" }])));
   render(<JourneyCreatePage/>);
   await screen.findByRole("option", { name: "Existing" });
-  fireEvent.change(screen.getByLabelText("Project"), { target: { value: "__new__" } });
+  const selector = screen.getByLabelText("Project");
+  selector.focus();
+  fireEvent.change(selector, { target: { value: "__new__" } });
   expect(screen.getByRole("dialog", { name: "Create project" })).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "Create project" })).toBeDisabled();
+  await userEvent.keyboard("{Escape}");
+  expect(screen.queryByRole("dialog", { name: "Create project" })).not.toBeInTheDocument();
+  expect(screen.getByLabelText("Project")).toHaveFocus();
 });
 
 test("keeps credentials separate, masks review, and submits them only in fields", async () => {

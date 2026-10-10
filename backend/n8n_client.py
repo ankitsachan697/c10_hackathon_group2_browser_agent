@@ -124,9 +124,12 @@ class N8nClient:
         agent_call_successful = False
         n8n_agent_response = None
 
+        has_auth = bool((credentials_meta or {}).get("has_auth"))
         prompt = (
             f"Target URL: {url}\n"
             f"Objective: {task_objective}\n"
+            f"Authentication required: {'yes' if has_auth else 'no'}. "
+            f"When yes, read both AUTH_USERNAME and AUTH_PASSWORD from the environment. "
             f"Generate a robust Python Playwright script using sync API (sync_playwright). "
             f"Never hardcode passwords; read from os.environ.get('AUTH_PASSWORD'). "
             f"Capture step screenshots (step_1_landing.png, step_2_credentials_filled.png, step_3_result.png) "
@@ -336,7 +339,7 @@ def run():
             if password and password_field.is_visible(timeout=5000):
                 print(f"[Step 2] Filling password securely...")
                 password_field.fill(password)
-                page.screenshot(path=os.path.join(artifacts_dir, "step_2_credentials_filled.png"))
+                page.add_style_tag(content="input[type=password], input[name=username], input[autocomplete=username] {{ filter: blur(8px) !important; }}")
 
             # Step 3: Submission & State Transition
             submit_btn = page.locator("button[type='submit'], input[type='submit'], button:has-text('Sign In'), button:has-text('Log In'), button:has-text('Submit')").first
@@ -356,8 +359,7 @@ def run():
             # Automatic failure diagnostic dump
             try:
                 page.screenshot(path=os.path.join(artifacts_dir, "failure_screenshot.png"))
-                with open(os.path.join(artifacts_dir, "dom_snapshot.html"), "w", encoding="utf-8") as f:
-                    f.write(page.content())
+                print("[Diagnostic] DOM snapshot omitted to protect entered credentials", file=sys.stderr)
                 print(f"[Diagnostic Engine] Captured failure_screenshot.png and dom_snapshot.html for Repair Agent.")
             except Exception as dump_err:
                 print(f"[ERROR] Could not dump failure artifacts: {{dump_err}}", file=sys.stderr)
