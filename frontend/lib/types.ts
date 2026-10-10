@@ -1,7 +1,9 @@
 export type ApiEnvelope<T> = { data: T; error: { code: string; message: string } | null; meta: Record<string, number> };
 export type Project = { id: string; name: string; description: string; archived?: number };
+export type GenerationOperation = { id: string; status: "QUEUED" | "RUNNING" | "COMPLETED" | "FAILED"; journey_id?: string | null; run_id?: string | null; error_code?: string | null; error_message?: string | null };
+export type ActivityEvent = { seq: number; scope_type: "run" | "operation"; source: string; kind: string; payload: Record<string, unknown>; created_at: string };
 export type Journey = { id: string; project_id: string; name: string; target_url: string; script: string; active: number; has_credentials?: boolean };
 export type RunAttempt = { attempt_number: number; status: string; stdout?: string; stderr?: string };
 export type Artifact = { id: string; kind: string; storage_path: string; media_type?: string };
-export type Run = { id: string; journey_id?: string; status: string; trigger_source: string; attempt_count: number; created_at: string; script_snapshot?: string; repair_patch?: string; diagnosis_json?: string; attempts?: RunAttempt[]; artifacts?: Artifact[] };
+export type Run = { id: string; journey_id?: string; status: string; trigger_source: string; attempt_count: number; script_version?: number; created_at: string; script_snapshot?: string; repair_patch?: string; diagnosis_json?: string; attempts?: RunAttempt[]; artifacts?: Artifact[]; visual_outcome?: string; visual_review?: Record<string, unknown> | null };
 export type Schedule = { id: string; journey_id?: string; project_id?: string; local_time: string; timezone: string; enabled: number; next_run?: string };

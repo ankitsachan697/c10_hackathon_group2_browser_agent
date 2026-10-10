@@ -1,3 +1,60 @@
-"use client";import{useEffect,useState}from"react";import{RotateCcw,Trash2}from"lucide-react";import{api}from"@/lib/api";import type{Run}from"@/lib/types";import{Button}from"@/components/ui/Button";import{ConfirmDialog}from"@/components/ui/ConfirmDialog";import{StatusBadge}from"@/components/ui/StatusBadge";import{RunTimeline}from"@/components/runs/RunTimeline";import{RunEvidence}from"@/components/runs/RunEvidence";import{RunScript}from"@/components/runs/RunScript";import{RunRepair}from"@/components/runs/RunRepair";import{RunLogs}from"@/components/runs/RunLogs";import{RunVisual}from"@/components/runs/RunVisual";
-const labels:Record<string,string>={PASSED_AFTER_REPAIR:"Passed after repair",NEEDS_ATTENTION:"Needs attention",PASSED:"Passed",FAILED:"Failed"};
-export default function RunDetailPage({params}:{params:Promise<{id:string}>}){const[id,setId]=useState("");const[run,setRun]=useState<Run|null>(null),[tab,setTab]=useState("Evidence"),[confirm,setConfirm]=useState(false);useEffect(()=>{Promise.resolve(params).then(value=>setId(value.id))},[params]);useEffect(()=>{if(id)api<Run>(`/api/runs/${id}`).then(setRun)},[id]);if(!run)return <div className="skeleton">Loading run…</div>;const rerun=(mode:"current"|"snapshot")=>api(`/api/runs/${id}/rerun`,{method:"POST",body:JSON.stringify({mode})});const tabs=["Evidence","Script","Repair","Logs","Visual"];return <div className="page"><div className="page-heading"><div><p className="eyebrow">Run {run.id.slice(0,12)}</p><h1>{labels[run.status]??run.status}</h1><StatusBadge status={run.status}/></div><div className="run-actions"><Button aria-label="Run current script" onClick={()=>rerun("current")}><RotateCcw size={15}/>Run current script</Button><Button aria-label="Run this version" onClick={()=>rerun("snapshot")}>Run this version</Button><Button aria-label="Delete run" className="button-secondary" onClick={()=>setConfirm(true)}><Trash2 size={15}/></Button></div></div><RunTimeline run={run}/><div className="tabs" role="tablist">{tabs.map(name=><button role="tab" aria-selected={tab===name} key={name} onClick={()=>setTab(name)}>{name}</button>)}</div>{tab==="Evidence"&&<RunEvidence artifacts={run.artifacts}/>} {tab==="Script"&&<RunScript original={run.script_snapshot??""} healed={run.repair_patch}/>} {tab==="Repair"&&<RunRepair original={run.script_snapshot??""} healed={run.repair_patch} diagnosis={run.diagnosis_json}/>} {tab==="Logs"&&<RunLogs/>} {tab==="Visual"&&<RunVisual runId={run.id}/>}<ConfirmDialog open={confirm} title="Delete this run?" confirmLabel="Delete run" onClose={()=>setConfirm(false)} onConfirm={async()=>{await api(`/api/runs/${id}`,{method:"DELETE"});setConfirm(false)}}>Evidence will move to recoverable trash.</ConfirmDialog></div>}
+"use client";
+
+import { useEffect, useState } from "react";
+import { RotateCcw, Trash2 } from "lucide-react";
+import { api } from "@/lib/api";
+import type { Run } from "@/lib/types";
+import { Button } from "@/components/ui/Button";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { StatusBadge } from "@/components/ui/StatusBadge";
+import { RunTimeline } from "@/components/runs/RunTimeline";
+import { RunEvidence } from "@/components/runs/RunEvidence";
+import { RunScript } from "@/components/runs/RunScript";
+import { RunRepair } from "@/components/runs/RunRepair";
+import { RunActivity } from "@/components/runs/RunActivity";
+import { RunVisual } from "@/components/runs/RunVisual";
+
+const labels: Record<string, string> = {
+  PASSED_AFTER_REPAIR: "Passed after repair", NEEDS_ATTENTION: "Needs attention", PASSED: "Passed", FAILED: "Failed",
+};
+
+export default function RunDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  const [id, setId] = useState("");
+  const [run, setRun] = useState<Run | null>(null);
+  const [tab, setTab] = useState("Evidence");
+  const [confirm, setConfirm] = useState(false);
+  const [error, setError] = useState("");
+  useEffect(() => { void Promise.resolve(params).then(value => setId(value.id)); }, [params]);
+  useEffect(() => {
+    if (!id) return;
+    void api<Run>(`/api/runs/${id}`).then(setRun).catch(failure => setError(failure instanceof Error ? failure.message : "Run unavailable"));
+    const timer = window.setInterval(() => {
+      void api<Run>(`/api/runs/${id}`).then(setRun).catch(() => undefined);
+    }, 1800);
+    return () => window.clearInterval(timer);
+  }, [id]);
+  if (!run) return <div className="skeleton">{error || "Loading run…"}</div>;
+  const rerun = async (mode: "current" | "snapshot") => {
+    try {
+      const next = await api<Run>(`/api/runs/${id}/rerun`, { method: "POST", body: JSON.stringify({ mode }) });
+      window.history.pushState(null, "", `/runs/${next.id}`);
+      setId(next.id);
+    } catch (failure) { setError(failure instanceof Error ? failure.message : "Could not start rerun"); }
+  };
+  const tabs = ["Evidence", "Script", "Repair", "Activity", "Visual"];
+  return <div className="page">
+    <div className="page-heading"><div><p className="eyebrow">Run {run.id.slice(0, 12)}</p><h1>{labels[run.status] ?? run.status}</h1><StatusBadge status={run.status}/></div>
+      <div className="run-actions"><Button aria-label="Run current script" onClick={() => void rerun("current")}><RotateCcw size={15}/>Run current script</Button><Button aria-label="Run this version" onClick={() => void rerun("snapshot")}>Run this version</Button><Button aria-label="Delete run" className="button-secondary" onClick={() => setConfirm(true)}><Trash2 size={15}/></Button></div>
+    </div>
+    {error && <p className="form-error" role="alert">{error}</p>}
+    <div className="run-meta"><span>Saved script v{run.script_version ?? "—"}</span><span>Trigger: {run.trigger_source ?? "First run"}</span><span>Attempts: {run.attempt_count}</span>{run.visual_outcome && <span>Visual: {run.visual_outcome.replaceAll("_", " ")}</span>}</div>
+    <RunTimeline run={run}/>
+    <div className="tabs" role="tablist">{tabs.map(name => <button role="tab" aria-selected={tab === name} key={name} onClick={() => setTab(name)}>{name}</button>)}</div>
+    {tab === "Evidence" && <RunEvidence artifacts={run.artifacts}/>}
+    {tab === "Script" && <RunScript original={run.script_snapshot ?? ""} healed={run.repair_patch}/>}
+    {tab === "Repair" && <RunRepair original={run.script_snapshot ?? ""} healed={run.repair_patch} diagnosis={run.diagnosis_json}/>}
+    {tab === "Activity" && <RunActivity runId={run.id}/>}
+    {tab === "Visual" && <RunVisual run={run}/>}
+    <ConfirmDialog open={confirm} title="Delete this run?" confirmLabel="Delete run" onClose={() => setConfirm(false)} onConfirm={async () => { await api(`/api/runs/${id}`, { method: "DELETE" }); setConfirm(false); }}>Evidence will move to recoverable trash.</ConfirmDialog>
+  </div>;
+}
