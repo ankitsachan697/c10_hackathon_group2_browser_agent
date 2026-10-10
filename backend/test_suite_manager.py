@@ -17,8 +17,12 @@ from visual_diff import compare_images
 
 try:
     from .config import Settings
+    from .database import Database
+    from .legacy_import import import_legacy_json
 except ImportError:
     from config import Settings
+    from database import Database
+    from legacy_import import import_legacy_json
 
 
 DEFAULT_SUITES_DIR = Path(__file__).resolve().parent / "test_suites"
@@ -166,3 +170,6 @@ class TestSuiteManager:
 
 
 suite_manager = TestSuiteManager()
+domain_database = Database(Settings.from_env().database_path)
+domain_database.initialize()
+import_legacy_json(domain_database, suite_manager.cases_file, suite_manager.runs_file)
