@@ -1,9 +1,9 @@
 """Shared domain enums and API value types."""
 
-from enum import StrEnum
+from enum import Enum
 
 
-class RunStatus(StrEnum):
+class RunStatus(str, Enum):
     QUEUED = "QUEUED"
     RUNNING = "RUNNING"
     PASSED = "PASSED"
@@ -15,11 +15,10 @@ class RunStatus(StrEnum):
     NEEDS_ATTENTION = "NEEDS_ATTENTION"
 
 
-class TriggerSource(StrEnum):
+class TriggerSource(str, Enum):
     ON_DEMAND = "ON_DEMAND"
     SCHEDULED = "SCHEDULED"
     SAVED_CASE = "SAVED_CASE"
     PROJECT = "PROJECT"
     RERUN_CURRENT = "RERUN_CURRENT"
     RERUN_SNAPSHOT = "RERUN_SNAPSHOT"
-

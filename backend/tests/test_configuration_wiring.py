@@ -23,6 +23,7 @@ def test_operational_settings_are_absent_until_explicitly_configured(monkeypatch
         "N8N_VISUAL_AGENT_ID",
         "ENABLE_N8N_GENERATION",
         "ENABLE_N8N_REPAIR",
+        "ENABLE_LOCAL_REPAIR",
     ):
         monkeypatch.delenv(name, raising=False)
 
@@ -39,6 +40,7 @@ def test_operational_settings_are_absent_until_explicitly_configured(monkeypatch
     assert settings.n8n_repair_agent_id is None
     assert settings.enable_n8n_generation is False
     assert settings.enable_n8n_repair is False
+    assert settings.enable_local_repair is False
 
 
 def test_operational_settings_validate_invalid_values(monkeypatch):
@@ -105,7 +107,7 @@ def test_generated_login_script_does_not_supply_demo_credentials():
 
 
 @pytest.mark.asyncio
-async def test_autonomous_run_uses_configured_runner_and_visual_settings(monkeypatch):
+async def test_saved_script_run_uses_configured_runner_and_visual_settings(monkeypatch):
     configured_settings = SimpleNamespace(
         auto_repair_retries=1,
         runner_timeout_seconds=47,
@@ -119,6 +121,7 @@ async def test_autonomous_run_uses_configured_runner_and_visual_settings(monkeyp
         runner_calls.append(kwargs)
         return {
             "passed": True,
+            "status": "PASSED",
             "screenshots": ["result.png"],
             "run_dir": "/tmp/run",
             "run_id": "run-id",
@@ -126,16 +129,12 @@ async def test_autonomous_run_uses_configured_runner_and_visual_settings(monkeyp
             "video": None,
         }
 
-    def generate_flow_script(**kwargs):
-        return {"python_script": "print('ok')", "discovered_steps": ["one"]}
-
     def handle_visual_baseline_lifecycle(**kwargs):
         visual_calls.append(kwargs)
         return {"status": "COMPLETED", "summary": "checked"}
 
     monkeypatch.setattr(server, "settings", configured_settings)
     monkeypatch.setattr(server, "runner", SimpleNamespace(execute_script=execute_script))
-    monkeypatch.setattr(server, "n8n_client", SimpleNamespace(generate_flow_script=generate_flow_script))
     monkeypatch.setattr(
         server,
         "suite_manager",
@@ -145,12 +144,14 @@ async def test_autonomous_run_uses_configured_runner_and_visual_settings(monkeyp
         ),
     )
 
-    await server.autonomous_run(
-        server.AutonomousRunRequest(url="https://target.example.test", task_objective="check page")
+    await server.execute_direct_script(
+        server.ExecuteScriptRequest(
+            script="print('saved')", url="https://target.example.test", timeout_seconds=47, auto_heal=False
+        )
     )
 
     assert runner_calls[0]["timeout_seconds"] == 47
-    assert runner_calls[0]["env_vars"] == {}
+    assert runner_calls[0]["script_code"] == "print('saved')"
     assert visual_calls[0]["threshold"] == 0.23
     assert visual_calls[0]["tolerance_percent"] == 0.75
 

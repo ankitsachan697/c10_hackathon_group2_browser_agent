@@ -91,6 +91,7 @@ class Settings:
     auto_repair_retries: int
     enable_n8n_generation: bool
     enable_n8n_repair: bool
+    enable_local_repair: bool
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -121,4 +122,5 @@ class Settings:
             auto_repair_retries=1,
             enable_n8n_generation=_bool_from_env("ENABLE_N8N_GENERATION"),
             enable_n8n_repair=_bool_from_env("ENABLE_N8N_REPAIR"),
+            enable_local_repair=_bool_from_env("ENABLE_LOCAL_REPAIR"),
         )

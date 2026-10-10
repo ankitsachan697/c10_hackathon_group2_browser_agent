@@ -23,6 +23,7 @@ if os.path.exists(venv_python) and os.path.abspath(sys.executable) != os.path.ab
 import json
 import time
 import asyncio
+from dataclasses import replace
 from typing import Dict, Any, List, Optional
 from fastapi import FastAPI, HTTPException, Request, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
@@ -36,6 +37,7 @@ from runner import PlaywrightRunner
 from visual_diff import compare_images
 from n8n_client import N8nClient
 from test_suite_manager import suite_manager
+from failure_context import build_failure_packet
 
 settings = Settings.from_env()
 n8n_client = N8nClient(settings)
@@ -199,12 +201,12 @@ async def execute_script(req: ExecuteRequest):
 @app.post("/api/diagnose-and-repair")
 async def diagnose_and_repair(req: RepairRequest):
     """Standalone Agent 3: Error Diagnosis & Adaptive Repair"""
-    res = n8n_client.diagnose_and_repair(
-        original_script=req.original_script,
-        error_trace=req.error_trace,
-        dom_snapshot=req.dom_snapshot or "",
-        screenshot_path=req.screenshot_path or "",
-    )
+    packet = replace(build_failure_packet({
+        "stderr": req.error_trace,
+        "dom_snapshot": req.dom_snapshot or "",
+        "screenshots": [req.screenshot_path] if req.screenshot_path else [],
+    }), original_script=req.original_script)
+    res = n8n_client.diagnose_and_repair(packet)
     return res
 
 
@@ -234,6 +236,10 @@ async def autonomous_run(req: AutonomousRunRequest):
     Full End-to-End Autonomous Pipeline:
     Discovery & Script Gen -> Execution -> If Fail: Diagnosis & Auto-Repair Loop -> Visual Regression
     """
+    raise HTTPException(
+        status_code=410,
+        detail="Autonomous generate-and-run was retired. Save a generated journey, then execute its saved script.",
+    )
     run_id = f"journey_{int(time.time())}"
     active_run_logs[run_id] = []
 
@@ -302,11 +308,9 @@ async def autonomous_run(req: AutonomousRunRequest):
 
         # Step 2: Error Diagnosis & Adaptive Repair Agent
         append_log("WARN", "Error Diagnosis Agent", "Analyzing stack trace, failure screenshot, and DOM snapshot...")
-        repair_res = n8n_client.diagnose_and_repair(
-            original_script=current_script,
-            error_trace=last_exec_res["stderr"] or last_exec_res["stdout"],
-            dom_snapshot=last_exec_res["dom_snapshot"],
-        )
+        repair_res = n8n_client.diagnose_and_repair(replace(
+            build_failure_packet(last_exec_res, secrets=secrets), original_script=current_script
+        ))
 
         append_log("WARN", "Error Diagnosis Agent", f"Root Cause: {repair_res['root_cause']}")
         append_log("INFO", "Adaptive Repair Agent", f"Applying fix: {repair_res['recommended_fix']}")
@@ -418,11 +422,9 @@ async def execute_direct_script(req: ExecuteScriptRequest):
             "message": "❌ Direct execution failed. Automatically invoking Error Diagnosis Agent...",
         })
 
-        repair_res = n8n_client.diagnose_and_repair(
-            original_script=current_script,
-            error_trace=exec_res["stderr"] or exec_res["stdout"],
-            dom_snapshot=exec_res.get("dom_snapshot", ""),
-        )
+        repair_res = n8n_client.diagnose_and_repair(replace(
+            build_failure_packet(exec_res, secrets=secrets), original_script=current_script
+        ))
 
         on_log({
             "timestamp": time.strftime("%H:%M:%S"),

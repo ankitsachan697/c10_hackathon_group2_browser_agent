@@ -21,6 +21,7 @@ class FailureDecision:
 @dataclass(frozen=True)
 class FailurePacket:
     category: str
+    original_script: str
     failed_action: str
     traceback: str
     dom_excerpt: str
@@ -58,6 +59,7 @@ def build_failure_packet(result: dict[str, Any], limits: FailureLimits | None = 
     dom_excerpt = _redact(result.get("dom_excerpt") or result.get("dom_snapshot") or "", secrets)[:limits.dom_chars]
     return FailurePacket(
         category=decision.category,
+        original_script=str(result.get("script_snapshot") or ""),
         failed_action=str(result.get("failed_action") or ""),
         traceback=traceback,
         dom_excerpt=dom_excerpt,

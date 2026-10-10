@@ -12,6 +12,7 @@ import re
 import json
 import time
 import requests
+from dataclasses import asdict
 from typing import Dict, Any, Optional, List
 
 try:
@@ -153,36 +154,57 @@ class N8nClient:
     # =========================================================================
     # AGENT 3: Error Diagnosis & Adaptive Repair Agent
     # =========================================================================
-    def diagnose_and_repair(
-        self,
-        original_script: str,
-        error_trace: str,
-        dom_snapshot: str = "",
-        screenshot_path: str = "",
-    ) -> Dict[str, Any]:
+    def diagnose_and_repair(self, packet, error_trace: str | None = None, dom_snapshot: str = "", screenshot_path: str = "") -> Dict[str, Any]:
         """
         Diagnoses error stack trace and DOM snapshot to patch broken selectors/timing.
         """
-        diagnosis = self._analyze_failure(error_trace, dom_snapshot)
-        repaired_script = self._apply_healing_patch(original_script, diagnosis)
+        if hasattr(packet, "original_script"):
+            packet_data = asdict(packet)
+            original_script = packet_data["original_script"]
+            error_trace = packet_data["traceback"]
+            dom_snapshot = packet_data["dom_excerpt"]
+        else:
+            original_script = str(packet)
+            packet_data = {"original_script": original_script, "traceback": error_trace or "", "dom_excerpt": dom_snapshot}
+        diagnosis = self._analyze_failure(error_trace or "", dom_snapshot)
         agent_response = None
         if self.settings.enable_n8n_repair:
-            prompt = (
-                f"Error trace: {error_trace}\n"
-                f"DOM excerpt: {dom_snapshot}\n"
-                "Return concise repair advice for the supplied Playwright script."
-            )
+            prompt = json.dumps(packet_data, separators=(",", ":"))
             try:
                 agent_response = self.call_n8n_agent(self.settings.n8n_repair_agent_id, prompt)
             except Exception:
                 agent_response = None
 
+        remote_repair = None
+        if isinstance(agent_response, dict):
+            candidate = agent_response.get("response", agent_response)
+            if isinstance(candidate, str):
+                try:
+                    candidate = json.loads(candidate)
+                except json.JSONDecodeError:
+                    candidate = None
+            if isinstance(candidate, dict) and isinstance(candidate.get("repaired_script"), str):
+                remote_repair = candidate
+
+        if remote_repair:
+            return remote_repair
+        if not self.settings.enable_local_repair:
+            return {
+                "agent_id": self.settings.n8n_repair_agent_id,
+                "agent_source": "Repair unavailable",
+                "root_cause": diagnosis["root_cause"],
+                "failure_category": diagnosis["category"],
+                "recommended_fix": diagnosis["recommendation"],
+                "diff_summary": diagnosis["diff_summary"],
+            }
+
+        repaired_script = self._apply_healing_patch(original_script, diagnosis)
+
         return {
             "agent_id": self.settings.n8n_repair_agent_id,
             "agent_source": (
                 f"n8n Cloud Agent (ID: {self.settings.n8n_repair_agent_id})"
-                if agent_response
-                else "Local deterministic repair"
+                if agent_response else "Local deterministic repair"
             ),
             "root_cause": diagnosis["root_cause"],
             "failure_category": diagnosis["category"],

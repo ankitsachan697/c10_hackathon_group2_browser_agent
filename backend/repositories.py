@@ -102,6 +102,12 @@ class JourneyRepository(_Repository):
             connection.execute(f"UPDATE journeys SET {assignments} WHERE id = ?", (*updates.values(), resource_id))
         return self.get(resource_id)
 
+    def list_for_project(self, project_id: str):
+        with self.database.connect() as connection:
+            return [_row(row) for row in connection.execute(
+                "SELECT * FROM journeys WHERE project_id = ? AND active = 1 ORDER BY created_at", (project_id,)
+            )]
+
 
 class ScheduleRepository(_Repository):
     table = "schedules"
