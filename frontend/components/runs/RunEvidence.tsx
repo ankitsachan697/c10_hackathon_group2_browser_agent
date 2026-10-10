@@ -1,0 +1,2 @@
+import type{Artifact}from"@/lib/types";import{EmptyState}from"../ui/EmptyState";
+export function RunEvidence({artifacts=[]}:{artifacts?:Artifact[]}){return artifacts.length?<div className="evidence-grid">{artifacts.map(a=><a className="evidence-card" key={a.id} href={`/api/artifacts/${a.id}`}><span>{a.kind}</span><strong>{a.storage_path.split("/").pop()}</strong></a>)}</div>:<EmptyState title="No evidence captured" detail="Screenshots, video, DOM excerpts, and logs appear here when available."/>}

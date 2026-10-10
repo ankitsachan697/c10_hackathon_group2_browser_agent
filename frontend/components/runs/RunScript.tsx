@@ -1,0 +1,1 @@
+import{ScriptDiffViewer}from"../ScriptDiffViewer";export function RunScript({original,healed}:{original:string;healed?:string}){return <ScriptDiffViewer originalScript={original} healedScript={healed}/>}

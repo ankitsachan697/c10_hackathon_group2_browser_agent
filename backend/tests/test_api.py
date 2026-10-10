@@ -86,6 +86,30 @@ def test_run_now_and_reruns_never_generate(api):
     assert services.agents.generation_calls == 0
 
 
+def test_run_detail_includes_attempts_and_stable_artifact_links(api):
+    client, services = api
+    _, journey = create_journey(client)
+    run = client.post(f"/api/journeys/{journey['id']}/run").json()["data"]
+    with services.database.transaction() as connection:
+        connection.execute(
+            "INSERT INTO run_attempts(id,run_id,attempt_number,status,created_at) VALUES (?,?,?,?,?)",
+            ("att_1", run["id"], 1, "PASSED", "2026-10-10T00:00:00+00:00"),
+        )
+    evidence = services.artifacts.root / run["id"] / "success.png"
+    evidence.parent.mkdir(parents=True, exist_ok=True)
+    evidence.write_bytes(b"png")
+    artifact = services.artifacts.repository.create({
+        "run_id": run["id"], "kind": "screenshot", "storage_path": f"{run['id']}/success.png", "media_type": "image/png"
+    })
+
+    detail = client.get(f"/api/runs/{run['id']}").json()["data"]
+    assert detail["attempts"][0]["attempt_number"] == 1
+    assert detail["artifacts"][0]["id"] == artifact["id"]
+    response = client.get(f"/api/artifacts/{artifact['id']}")
+    assert response.status_code == 200
+    assert response.content == b"png"
+
+
 def test_generation_is_explicit(api):
     client, services = api
     project = client.post("/api/projects", json={"name": "Web"}).json()["data"]

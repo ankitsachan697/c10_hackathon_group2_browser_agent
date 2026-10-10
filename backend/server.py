@@ -607,7 +607,7 @@ def get_logs(run_id: str):
     return {"run_id": run_id, "logs": active_run_logs.get(run_id, [])}
 
 
-@app.get("/api/artifacts/{file_path:path}")
+@app.get("/api/legacy/artifacts/{file_path:path}")
 def get_artifact(file_path: str):
     """
     Universal artifact server.

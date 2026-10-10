@@ -23,6 +23,11 @@ def get_run(run_id: str, svc: AppServices = Depends(services)):
     value = RunRepository(svc.database).get(run_id)
     if not value:
         raise HTTPException(404, detail=error("NOT_FOUND", "Run not found"))
+    with svc.database.connect() as connection:
+        value["attempts"] = [dict(row) for row in connection.execute(
+            "SELECT * FROM run_attempts WHERE run_id = ? ORDER BY attempt_number", (run_id,)
+        )]
+    value["artifacts"] = svc.artifacts.repository.list_for_run(run_id)
     return ok(value)
 
 
