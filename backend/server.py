@@ -74,7 +74,7 @@ class ExecuteRequest(BaseModel):
     env_vars: Optional[Dict[str, str]] = None
     secrets_to_mask: Optional[List[str]] = None
     headed: bool = False
-    timeout_seconds: int = settings.runner_timeout_seconds
+    timeout_seconds: int | None = settings.runner_timeout_seconds
 
 
 class RepairRequest(BaseModel):
@@ -87,8 +87,8 @@ class RepairRequest(BaseModel):
 class VisualDiffRequest(BaseModel):
     baseline_path: str
     candidate_path: str
-    threshold: float = settings.visual_diff_threshold
-    tolerance_percent: float = 0.5
+    threshold: float | None = settings.visual_diff_threshold
+    tolerance_percent: float | None = settings.visual_tolerance_percent
 
 
 class AutonomousRunRequest(BaseModel):
@@ -109,7 +109,7 @@ class ExecuteScriptRequest(BaseModel):
     headed: bool = False
     username: Optional[str] = None
     password: Optional[str] = None
-    timeout_seconds: int = settings.runner_timeout_seconds
+    timeout_seconds: int | None = settings.runner_timeout_seconds
     auto_heal: bool = True
 
 
@@ -127,6 +127,15 @@ class SaveTestCaseRequest(BaseModel):
 from fastapi import FastAPI, HTTPException, Request, BackgroundTasks, WebSocket, WebSocketDisconnect
 
 # --- Endpoints ---
+
+def _require_runner_timeout(timeout_seconds: int | None) -> int:
+    if timeout_seconds is None:
+        raise HTTPException(status_code=503, detail="RUNNER_TIMEOUT_SECONDS is not configured")
+    return timeout_seconds
+
+
+def _visual_settings_available() -> bool:
+    return settings.visual_diff_threshold is not None and settings.visual_tolerance_percent is not None
 
 @app.get("/api/health")
 def health_check():
@@ -180,7 +189,7 @@ async def execute_script(req: ExecuteRequest):
         script_code=req.script,
         env_vars=req.env_vars,
         secrets_to_mask=req.secrets_to_mask,
-        timeout_seconds=req.timeout_seconds,
+        timeout_seconds=_require_runner_timeout(req.timeout_seconds),
         headed=req.headed,
         on_log=on_log,
     )
@@ -202,6 +211,9 @@ async def diagnose_and_repair(req: RepairRequest):
 @app.post("/api/visual-diff")
 async def visual_diff(req: VisualDiffRequest):
     """Standalone Agent 4: Visual Regression Monitor (Pixelmatch)"""
+    if req.threshold is None or req.tolerance_percent is None:
+        raise HTTPException(status_code=503, detail="Visual comparison thresholds are not configured")
+
     diff_filename = f"diff_{int(time.time())}.png"
     diff_path = os.path.join(ARTIFACTS_DIR, diff_filename)
 
@@ -242,10 +254,11 @@ async def autonomous_run(req: AutonomousRunRequest):
 
     # Passwords to mask
     secrets = [s for s in [req.password, req.username] if s]
-    env_vars = {
-        "AUTH_USERNAME": req.username or "demo_user",
-        "AUTH_PASSWORD": req.password or "demo_pass",
-    }
+    env_vars = {}
+    if req.username:
+        env_vars["AUTH_USERNAME"] = req.username
+    if req.password:
+        env_vars["AUTH_PASSWORD"] = req.password
 
     # Step 1: Flow Discovery & Script Generator
     discovery_res = n8n_client.generate_flow_script(
@@ -272,6 +285,7 @@ async def autonomous_run(req: AutonomousRunRequest):
             script_code=current_script,
             env_vars=env_vars,
             secrets_to_mask=secrets,
+            timeout_seconds=_require_runner_timeout(settings.runner_timeout_seconds),
             headed=req.headed,
             on_log=run_log_cb,
         )
@@ -309,13 +323,15 @@ async def autonomous_run(req: AutonomousRunRequest):
 
     # Step 3: Visual Regression Monitor Agent (Smart Golden Baseline Lifecycle)
     visual_res = None
-    if req.run_visual_regression and last_exec_res and last_exec_res["screenshots"]:
+    if req.run_visual_regression and last_exec_res and last_exec_res["screenshots"] and _visual_settings_available():
         append_log("INFO", "Regression Monitor Agent", "Evaluating Golden Baseline & Visual Regression...")
         visual_res = suite_manager.handle_visual_baseline_lifecycle(
             url=req.url,
             test_case_name=req.test_case_name or req.task_objective[:30],
             screenshots=last_exec_res["screenshots"],
             run_dir=last_exec_res["run_dir"],
+            threshold=settings.visual_diff_threshold,
+            tolerance_percent=settings.visual_tolerance_percent,
         )
         append_log("INFO", "Regression Monitor Agent", visual_res["summary"])
 
@@ -380,11 +396,12 @@ async def execute_direct_script(req: ExecuteScriptRequest):
         secrets.append(req.password)
 
     current_script = req.script
+    timeout_seconds = _require_runner_timeout(req.timeout_seconds)
     exec_res = await runner.execute_script(
         script_code=current_script,
         env_vars=env_vars,
         secrets_to_mask=secrets,
-        timeout_seconds=req.timeout_seconds,
+        timeout_seconds=timeout_seconds,
         headed=req.headed,
         on_log=on_log,
     )
@@ -435,7 +452,7 @@ async def execute_direct_script(req: ExecuteScriptRequest):
             script_code=current_script,
             env_vars=env_vars,
             secrets_to_mask=secrets,
-            timeout_seconds=req.timeout_seconds,
+            timeout_seconds=timeout_seconds,
             headed=req.headed,
             on_log=on_log,
         )
@@ -453,12 +470,14 @@ async def execute_direct_script(req: ExecuteScriptRequest):
 
     # Check Visual Regression / Golden Baseline Lifecycle
     visual_res = None
-    if exec_res.get("screenshots") and req.url:
+    if exec_res.get("screenshots") and req.url and _visual_settings_available():
         visual_res = suite_manager.handle_visual_baseline_lifecycle(
             url=req.url,
             test_case_name=req.test_name or "",
             screenshots=exec_res["screenshots"],
             run_dir=exec_res["run_dir"],
+            threshold=settings.visual_diff_threshold,
+            tolerance_percent=settings.visual_tolerance_percent,
         )
         on_log({
             "timestamp": time.strftime("%H:%M:%S"),

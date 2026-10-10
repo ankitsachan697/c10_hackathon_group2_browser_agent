@@ -34,7 +34,7 @@ class N8nClient:
 
     @property
     def is_configured(self) -> bool:
-        return bool(self.mcp_url and self.token)
+        return bool(self.mcp_url and self.token and self.settings.n8n_timeout_seconds)
 
     def call_mcp_tool(self, tool_name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
         """Calls a tool on the n8n MCP server."""
@@ -75,12 +75,10 @@ class N8nClient:
         except Exception as e:
             return {"error": str(e)}
 
-    AGENT_DISCOVERY_ID = "QEzE1lGs9WbTU82H"
-    AGENT_REPAIR_ID = "p3Sh9BmTzLMC0f8A"
-    AGENT_VISUAL_ID = "bS5GQjs2LrNHrJZH"
-
-    def call_n8n_agent(self, agent_id: str, prompt: str) -> Optional[Dict[str, Any]]:
+    def call_n8n_agent(self, agent_id: str | None, prompt: str) -> Optional[Dict[str, Any]]:
         """Invokes a published n8n agent directly via the MCP server."""
+        if not agent_id:
+            return None
         payload = {
             "name": "call_agent",
             "arguments": {
@@ -92,6 +90,10 @@ class N8nClient:
                 },
             },
         }
+        if self.settings.n8n_model:
+            payload["arguments"]["model"] = self.settings.n8n_model
+        if self.settings.n8n_max_tokens:
+            payload["arguments"]["maxTokens"] = self.settings.n8n_max_tokens
         res = self.call_mcp_tool("call_agent", payload["arguments"])
         if isinstance(res, dict) and res.get("ok"):
             return res
@@ -114,7 +116,7 @@ class N8nClient:
     ) -> Dict[str, Any]:
         """
         Uses Flow Discovery & Script Generator logic to create a robust Python Playwright script.
-        Calls the n8n Cloud Agent (QEzE1lGs9WbTU82H) with fallback to resilient synthesizer.
+        Calls the configured n8n agent when enabled, with a local synthesizer fallback.
         """
         agent_call_successful = False
         n8n_agent_response = None
@@ -129,21 +131,22 @@ class N8nClient:
             f"Assert any success message or heading like 'Logged In Successfully'."
         )
 
-        try:
-            agent_res = self.call_n8n_agent(self.AGENT_DISCOVERY_ID, prompt)
-            if agent_res and agent_res.get("response"):
-                agent_call_successful = True
-                n8n_agent_response = agent_res.get("response")
-        except Exception:
-            pass
+        if self.settings.enable_n8n_generation:
+            try:
+                agent_res = self.call_n8n_agent(self.settings.n8n_discovery_agent_id, prompt)
+                if agent_res and agent_res.get("response"):
+                    agent_call_successful = True
+                    n8n_agent_response = agent_res.get("response")
+            except Exception:
+                pass
 
         # Synthesize production-ready script with custom assertions based on objective
         synthesized = self._synthesize_script(url, task_objective, credentials_meta)
-        synthesized["agent_id"] = self.AGENT_DISCOVERY_ID
+        synthesized["agent_id"] = self.settings.n8n_discovery_agent_id
         synthesized["agent_source"] = (
-            f"n8n Cloud Agent (ID: {self.AGENT_DISCOVERY_ID})"
+            f"n8n Cloud Agent (ID: {self.settings.n8n_discovery_agent_id})"
             if agent_call_successful
-            else "n8n AI Engine / Resilient Synthesizer"
+            else "Local resilient synthesizer"
         )
         return synthesized
 
@@ -162,10 +165,25 @@ class N8nClient:
         """
         diagnosis = self._analyze_failure(error_trace, dom_snapshot)
         repaired_script = self._apply_healing_patch(original_script, diagnosis)
+        agent_response = None
+        if self.settings.enable_n8n_repair:
+            prompt = (
+                f"Error trace: {error_trace}\n"
+                f"DOM excerpt: {dom_snapshot}\n"
+                "Return concise repair advice for the supplied Playwright script."
+            )
+            try:
+                agent_response = self.call_n8n_agent(self.settings.n8n_repair_agent_id, prompt)
+            except Exception:
+                agent_response = None
 
         return {
-            "agent_id": self.AGENT_REPAIR_ID,
-            "agent_source": f"n8n Cloud Agent (ID: {self.AGENT_REPAIR_ID})",
+            "agent_id": self.settings.n8n_repair_agent_id,
+            "agent_source": (
+                f"n8n Cloud Agent (ID: {self.settings.n8n_repair_agent_id})"
+                if agent_response
+                else "Local deterministic repair"
+            ),
             "root_cause": diagnosis["root_cause"],
             "failure_category": diagnosis["category"],
             "recommended_fix": diagnosis["recommendation"],
@@ -227,8 +245,8 @@ def run():
     os.makedirs(artifacts_dir, exist_ok=True)
     
     # Secure parameters from environment (never hardcoded)
-    username = os.environ.get("AUTH_USERNAME", "testuser@example.com")
-    password = os.environ.get("AUTH_PASSWORD", "SecurePass123!")
+    username = os.environ.get("AUTH_USERNAME")
+    password = os.environ.get("AUTH_PASSWORD")
     target_url = {repr(clean_url)}
 
     print(f"[Flow Discovery] Starting journey for: {{target_url}}")
@@ -253,12 +271,12 @@ def run():
             
             # Resilient locator strategy with multi-selector fallback
             username_field = page.locator("input[name='username'], input[type='email'], input#email, input#username, input[autocomplete='username']").first
-            if username_field.is_visible(timeout=5000):
+            if username and username_field.is_visible(timeout=5000):
                 print(f"[Step 2] Filling username field...")
                 username_field.fill(username)
             
             password_field = page.locator("input[name='password'], input[type='password'], input#password, input[autocomplete='current-password']").first
-            if password_field.is_visible(timeout=5000):
+            if password and password_field.is_visible(timeout=5000):
                 print(f"[Step 2] Filling password securely...")
                 password_field.fill(password)
                 page.screenshot(path=os.path.join(artifacts_dir, "step_2_credentials_filled.png"))

@@ -13,8 +13,8 @@ def compare_images(
     baseline_path: str,
     candidate_path: str,
     output_diff_path: str,
-    threshold: float = 0.1,
-    tolerance_percent: float = 0.5,
+    threshold: float,
+    tolerance_percent: float,
 ) -> Dict[str, Any]:
     """
     Compares two screenshots using pixelmatch.
@@ -22,7 +22,7 @@ def compare_images(
     :param baseline_path: Path to baseline golden screenshot.
     :param candidate_path: Path to newly captured candidate screenshot.
     :param output_diff_path: Where to save the diff heatmap image.
-    :param threshold: Matching threshold (0.0 to 1.0, default 0.1). Smaller is more sensitive.
+    :param threshold: Matching threshold (0.0 to 1.0). Smaller is more sensitive.
     :param tolerance_percent: Percentage of mismatched pixels tolerated before flagging regression.
     :return: Dict containing diff metrics and pass/fail status.
     """

@@ -10,11 +10,18 @@ import requests
 
 N8N_MCP_URL = os.getenv("N8N_MCP_URL")
 N8N_BEARER_TOKEN = os.getenv("N8N_BEARER_TOKEN")
+N8N_TIMEOUT_SECONDS = os.getenv("N8N_TIMEOUT_SECONDS")
 
 
 def call_mcp_tool(tool_name: str, args: dict):
-    if not N8N_MCP_URL or not N8N_BEARER_TOKEN:
-        return {"error": "n8n MCP endpoint and bearer token are not configured"}
+    if not N8N_MCP_URL or not N8N_BEARER_TOKEN or not N8N_TIMEOUT_SECONDS:
+        return {"error": "n8n MCP endpoint, bearer token, and timeout are required"}
+    try:
+        timeout_seconds = int(N8N_TIMEOUT_SECONDS)
+    except ValueError:
+        return {"error": "N8N_TIMEOUT_SECONDS must be a positive integer"}
+    if timeout_seconds <= 0:
+        return {"error": "N8N_TIMEOUT_SECONDS must be a positive integer"}
 
     headers = {
         "Authorization": f"Bearer {N8N_BEARER_TOKEN}",
@@ -30,7 +37,7 @@ def call_mcp_tool(tool_name: str, args: dict):
             "arguments": args,
         },
     }
-    resp = requests.post(N8N_MCP_URL, headers=headers, json=payload, timeout=30)
+    resp = requests.post(N8N_MCP_URL, headers=headers, json=payload, timeout=timeout_seconds)
     for line in resp.text.split("\n"):
         if line.startswith("data:"):
             data = json.loads(line[5:])

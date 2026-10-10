@@ -11,16 +11,17 @@ import re
 import json
 import time
 import shutil
+from pathlib import Path
 from typing import Dict, Any, List, Optional
 from visual_diff import compare_images
 
-SUITES_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "test_suites"))
-CASES_FILE = os.path.join(SUITES_DIR, "cases.json")
-RUNS_FILE = os.path.join(SUITES_DIR, "runs_history.json")
-BASELINES_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "artifacts", "baselines"))
+try:
+    from .config import Settings
+except ImportError:
+    from config import Settings
 
-os.makedirs(SUITES_DIR, exist_ok=True)
-os.makedirs(BASELINES_DIR, exist_ok=True)
+
+DEFAULT_SUITES_DIR = Path(__file__).resolve().parent / "test_suites"
 
 
 def _get_slug(url: str, name: str = "") -> str:
@@ -31,35 +32,29 @@ def _get_slug(url: str, name: str = "") -> str:
 
 
 class TestSuiteManager:
-    def __init__(self):
+    def __init__(self, suites_dir: Path | str = DEFAULT_SUITES_DIR, artifacts_root: Path | str | None = None):
+        settings = Settings.from_env()
+        self.suites_dir = Path(suites_dir)
+        self.cases_file = self.suites_dir / "cases.json"
+        self.runs_file = self.suites_dir / "runs_history.json"
+        self.artifacts_root = Path(artifacts_root) if artifacts_root else settings.artifacts_root
+        self.baselines_dir = self.artifacts_root / "baselines"
         self._ensure_files()
 
     def _ensure_files(self):
-        if not os.path.exists(CASES_FILE):
-            default_cases = [
-                {
-                    "id": "tc_practice_login",
-                    "project": "Authentication",
-                    "name": "PracticeTest Automation Login",
-                    "target_url": "https://practicetestautomation.com/practice-test-login/",
-                    "objective": "Perform user authentication with student/Password123 and validate Logged In Successfully",
-                    "username": "student",
-                    "password_masked": "••••••••",
-                    "created_at": time.strftime("%Y-%m-%d %H:%M:%S"),
-                    "last_run_status": "PASSED",
-                    "has_baseline": True,
-                }
-            ]
-            with open(CASES_FILE, "w", encoding="utf-8") as f:
-                json.dump(default_cases, f, indent=2)
+        self.suites_dir.mkdir(parents=True, exist_ok=True)
+        self.baselines_dir.mkdir(parents=True, exist_ok=True)
+        if not self.cases_file.exists():
+            with self.cases_file.open("w", encoding="utf-8") as f:
+                json.dump([], f, indent=2)
 
-        if not os.path.exists(RUNS_FILE):
-            with open(RUNS_FILE, "w", encoding="utf-8") as f:
+        if not self.runs_file.exists():
+            with self.runs_file.open("w", encoding="utf-8") as f:
                 json.dump([], f, indent=2)
 
     def get_test_cases(self) -> List[Dict[str, Any]]:
         try:
-            with open(CASES_FILE, "r", encoding="utf-8") as f:
+            with self.cases_file.open("r", encoding="utf-8") as f:
                 return json.load(f)
         except Exception:
             return []
@@ -77,31 +72,31 @@ class TestSuiteManager:
         else:
             cases.append(case_data)
 
-        with open(CASES_FILE, "w", encoding="utf-8") as f:
+        with self.cases_file.open("w", encoding="utf-8") as f:
             json.dump(cases, f, indent=2)
         return case_data
 
     def delete_test_case(self, case_id: str) -> bool:
         cases = self.get_test_cases()
         filtered = [c for c in cases if c["id"] != case_id]
-        with open(CASES_FILE, "w", encoding="utf-8") as f:
+        with self.cases_file.open("w", encoding="utf-8") as f:
             json.dump(filtered, f, indent=2)
         return len(filtered) < len(cases)
 
     def record_run(self, run_record: Dict[str, Any]):
         try:
-            with open(RUNS_FILE, "r", encoding="utf-8") as f:
+            with self.runs_file.open("r", encoding="utf-8") as f:
                 runs = json.load(f)
         except Exception:
             runs = []
         runs.insert(0, run_record)
         runs = runs[:100]  # Keep last 100 runs
-        with open(RUNS_FILE, "w", encoding="utf-8") as f:
+        with self.runs_file.open("w", encoding="utf-8") as f:
             json.dump(runs, f, indent=2)
 
     def get_run_history(self) -> List[Dict[str, Any]]:
         try:
-            with open(RUNS_FILE, "r", encoding="utf-8") as f:
+            with self.runs_file.open("r", encoding="utf-8") as f:
                 return json.load(f)
         except Exception:
             return []
@@ -116,7 +111,8 @@ class TestSuiteManager:
         test_case_name: str,
         screenshots: List[str],
         run_dir: str,
-        tolerance_percent: float = 0.5,
+        threshold: float,
+        tolerance_percent: float,
     ) -> Dict[str, Any]:
         """
         Manages Golden Baseline lifecycle:
@@ -132,14 +128,14 @@ class TestSuiteManager:
             }
 
         slug = _get_slug(url, test_case_name)
-        case_baseline_dir = os.path.join(BASELINES_DIR, slug)
+        case_baseline_dir = self.baselines_dir / slug
         golden_file = os.path.join(case_baseline_dir, "golden_result.png")
 
         candidate_file = os.path.join(run_dir, screenshots[-1])
 
         # First Run Check: If no baseline exists, establish it!
         if not os.path.exists(golden_file):
-            os.makedirs(case_baseline_dir, exist_ok=True)
+            case_baseline_dir.mkdir(parents=True, exist_ok=True)
             shutil.copy2(candidate_file, golden_file)
             return {
                 "status": "BASELINE_ESTABLISHED",
@@ -158,6 +154,7 @@ class TestSuiteManager:
             baseline_path=golden_file,
             candidate_path=candidate_file,
             output_diff_path=diff_out,
+            threshold=threshold,
             tolerance_percent=tolerance_percent,
         )
         diff_res["is_first_run"] = False

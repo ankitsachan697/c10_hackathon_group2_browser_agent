@@ -67,7 +67,7 @@ class PlaywrightRunner:
         script_code: str,
         env_vars: Optional[Dict[str, str]] = None,
         secrets_to_mask: Optional[List[str]] = None,
-        timeout_seconds: int = 60,
+        timeout_seconds: Optional[int] = None,
         on_log: Optional[Callable[[Dict[str, Any]], None]] = None,
         headed: bool = False,
     ) -> Dict[str, Any]:

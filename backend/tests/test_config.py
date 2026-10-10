@@ -34,5 +34,15 @@ def test_workflow_deployment_requires_environment_configuration(monkeypatch):
     monkeypatch.setattr(deploy_workflows.requests, "post", unexpected_request)
 
     assert deploy_workflows.call_mcp_tool("search_workflows", {}) == {
-        "error": "n8n MCP endpoint and bearer token are not configured"
+        "error": "n8n MCP endpoint, bearer token, and timeout are required"
+    }
+
+
+def test_workflow_deployment_requires_configured_timeout(monkeypatch):
+    monkeypatch.setattr(deploy_workflows, "N8N_MCP_URL", "https://n8n.example.test/mcp")
+    monkeypatch.setattr(deploy_workflows, "N8N_BEARER_TOKEN", "configured-token")
+    monkeypatch.setattr(deploy_workflows, "N8N_TIMEOUT_SECONDS", None)
+
+    assert deploy_workflows.call_mcp_tool("search_workflows", {}) == {
+        "error": "n8n MCP endpoint, bearer token, and timeout are required"
     }
