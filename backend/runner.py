@@ -232,10 +232,25 @@ class PlaywrightRunner:
             "screenshots": sorted(screenshots),
             "video": video_filename,
             "dom_snapshot": dom_snapshot,
+            "dom_excerpt": dom_snapshot[:6000],
+            "failed_action": self._extract_failed_action("\n".join(stderr_lines)),
+            "locator_evidence": self._extract_locator_evidence("\n".join(stderr_lines)),
             "stdout": "\n".join(stdout_lines),
             "stderr": redactor.redact("\n".join(stderr_lines)),
             "logs": logs,
         }
+
+    @staticmethod
+    def _extract_failed_action(stderr: str) -> str:
+        for line in reversed((stderr or "").splitlines()):
+            if any(token in line.lower() for token in ("locator", "click", "fill", "expect", "timeout")):
+                return line.strip()[:500]
+        return ""
+
+    @staticmethod
+    def _extract_locator_evidence(stderr: str) -> List[str]:
+        candidates = re.findall(r"(?:locator\(|waiting for |selector[=:] ?)([^\n]+)", stderr or "", re.IGNORECASE)
+        return [candidate.strip()[:300] for candidate in candidates[:5]]
 
     def _wrap_script(self, raw_script: str, run_dir: str, headed: bool = False) -> str:
         """

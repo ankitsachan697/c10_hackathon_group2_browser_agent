@@ -153,3 +153,11 @@ class ArtifactRepository(_Repository):
             )
         return self.get(resource_id)
 
+    def list_for_run(self, run_id: str):
+        with self.database.connect() as connection:
+            return [_row(row) for row in connection.execute("SELECT * FROM artifacts WHERE run_id = ?", (run_id,))]
+
+    def mark_deleted(self, resource_id: str, deleted_at: str):
+        with self.database.transaction() as connection:
+            connection.execute("UPDATE artifacts SET deleted_at = ? WHERE id = ?", (deleted_at, resource_id))
+        return self.get(resource_id)
