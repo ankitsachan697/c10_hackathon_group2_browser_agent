@@ -1,4 +1,5 @@
 from backend.runner import PlaywrightRunner, UnsafeScriptError, validate_browser_script
+from backend.action_events import instrument_script
 import pytest
 
 
@@ -42,6 +43,22 @@ def test_wrapper_handles_empty_context_and_injects_credential_mask_before_page(t
     compile(wrapped, "wrapped.py", "exec")
     assert "new_context(," not in wrapped
     assert wrapped.index("context.add_init_script") < wrapped.index("page = context.new_page()")
+
+
+def test_wrapper_keeps_nested_browser_new_page_indentation(tmp_path):
+    script = (
+        "def run(playwright):\n"
+        "    browser = playwright.chromium.launch()\n"
+        "    page = browser.new_page()\n"
+        "    try:\n"
+        "        page.goto('https://example.test')\n"
+        "    finally:\n"
+        "        browser.close()\n"
+    )
+
+    wrapped = PlaywrightRunner(tmp_path)._wrap_script(instrument_script(script), str(tmp_path / "run"))
+
+    compile(wrapped, "wrapped.py", "exec")
 
 
 def test_execution_environment_does_not_inherit_backend_secrets(tmp_path, monkeypatch):

@@ -374,9 +374,15 @@ class PlaywrightRunner:
             script = re.sub(r'new_context\((.*?)\)', add_video, script, flags=re.DOTALL)
         elif "new_page" in script and "new_context" not in script:
             # Wrap browser.new_page with a context that records video
-            script = script.replace(
-                "page = browser.new_page()",
-                f"context = browser.new_context(record_video_dir={repr(run_dir)}, record_video_size={{'width': 1280, 'height': 800}})\n        page = context.new_page()"
+            script = re.sub(
+                r"(?m)^([ \t]*)page\s*=\s*browser\.new_page\(\)[ \t]*$",
+                lambda match: (
+                    f"{match.group(1)}context = browser.new_context("
+                    f"record_video_dir={run_dir!r}, "
+                    "record_video_size={'width': 1280, 'height': 800})\n"
+                    f"{match.group(1)}page = context.new_page()"
+                ),
+                script,
             )
 
         credential_mask = """(() => { const apply = () => document.querySelectorAll('input[type=password],input[type=email],input[name=username],input#username,input#email,input[autocomplete=username],input[autocomplete^="cc-"],input[name*="card" i],input[id*="card" i],input[name*="cvv" i],input[id*="cvv" i],input[name*="cvc" i],input[id*="cvc" i]').forEach(el => { el.style.filter = 'blur(10px)'; }); new MutationObserver(apply).observe(document.documentElement, {subtree:true, childList:true}); addEventListener('DOMContentLoaded', apply); })();"""
