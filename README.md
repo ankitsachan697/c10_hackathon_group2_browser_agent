@@ -17,10 +17,9 @@ backend/.venv/bin/pip install -r backend/requirements.txt
 backend/.venv/bin/playwright install chromium
 docker build -f backend/Dockerfile.runner -t outskill-browser-runner:local .
 npm --prefix frontend ci
-backend/.venv/bin/python -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())'
 ```
 
-Put the generated value in the untracked `.env` as `CREDENTIAL_ENCRYPTION_KEY`. Add `N8N_BEARER_TOKEN` only when the application should invoke the published n8n agents. Safe defaults—including endpoint, agent IDs, flags, timeouts, and the internal backend address—are tracked in `config/application.json`.
+The backend creates a private, persistent key next to its SQLite database automatically; no manual `CREDENTIAL_ENCRYPTION_KEY` is needed for local use. Back up the database and its `.credentials.key` file together. An existing `CREDENTIAL_ENCRYPTION_KEY` remains supported for deployments and is copied to that local key file on startup when it is absent. Add `N8N_BEARER_TOKEN` only when the application should invoke the published n8n agents. Safe defaults—including endpoint, agent IDs, flags, timeouts, and the internal backend address—are tracked in `config/application.json`.
 
 Start the services in separate terminals:
 
@@ -34,7 +33,7 @@ Open `http://localhost:3000`. The frontend calls same-origin `/api/*` routes and
 
 ### GitHub Secrets
 
-Configure `N8N_BEARER_TOKEN` and `CREDENTIAL_ENCRYPTION_KEY` in repository or environment secrets. `.github/workflows/quality.yml` maps them into runtime environment variables without printing them. The optional live login check additionally uses `E2E_LOGIN_USERNAME` and `E2E_LOGIN_PASSWORD`. GitHub Secrets do not configure a separately deployed server; inject the same two runtime secrets through that host's secret manager.
+Configure `N8N_BEARER_TOKEN` in repository or environment secrets when agent calls are enabled. The optional live login check uses `E2E_LOGIN_USERNAME` and `E2E_LOGIN_PASSWORD`; it no longer needs a credential key secret. GitHub Secrets do not configure a separately deployed server. On a server, persist and back up the private key file with the database, or optionally inject `CREDENTIAL_ENCRYPTION_KEY` through the host's secret manager.
 
 ### Browser execution after deployment
 

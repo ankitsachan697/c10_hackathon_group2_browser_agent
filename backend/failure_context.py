@@ -1,8 +1,12 @@
 """Deterministic failure classification and token-bounded repair context."""
 
-import re
 from dataclasses import dataclass
 from typing import Any, Iterable
+
+try:
+    from .redaction import SensitiveDataRedactor
+except ImportError:
+    from redaction import SensitiveDataRedactor
 
 
 @dataclass(frozen=True)
@@ -50,25 +54,18 @@ def classify_failure(result: dict[str, Any]) -> FailureDecision:
     return FailureDecision("UNKNOWN", False, "Failure is not safely repairable")
 
 
-def _redact(value: str, secrets: Iterable[str]) -> str:
-    clean = value or ""
-    for secret in secrets:
-        if secret:
-            clean = clean.replace(secret, "[REDACTED]")
-    return re.sub(r"(?i)(password|token|secret)\s*[:=]\s*['\"]?[^\s'\"]+", r"\1=[REDACTED]", clean)
-
-
 def build_failure_packet(result: dict[str, Any], limits: FailureLimits | None = None, secrets: Iterable[str] = ()) -> FailurePacket:
     limits = limits or FailureLimits()
     decision = classify_failure(result)
-    traceback = _redact(result.get("stderr") or result.get("stdout") or "", secrets)[-limits.traceback_chars:]
-    dom_excerpt = _redact(result.get("dom_excerpt") or result.get("dom_snapshot") or "", secrets)[:limits.dom_chars]
+    redact = SensitiveDataRedactor(secrets).redact
+    traceback = redact(result.get("stderr") or result.get("stdout") or "")[-limits.traceback_chars:]
+    dom_excerpt = redact(result.get("dom_excerpt") or result.get("dom_snapshot") or "")[:limits.dom_chars]
     return FailurePacket(
         category=decision.category,
-        original_script=_redact(str(result.get("script_snapshot") or ""), secrets)[:limits.script_chars],
-        failed_action=_redact(str(result.get("failed_action") or ""), secrets)[:limits.action_chars],
+        original_script=redact(str(result.get("script_snapshot") or ""))[:limits.script_chars],
+        failed_action=redact(str(result.get("failed_action") or ""))[:limits.action_chars],
         traceback=traceback,
         dom_excerpt=dom_excerpt,
-        locator_evidence=tuple(_redact(str(item), secrets)[:limits.locator_chars] for item in result.get("locator_evidence", [])[:limits.locator_items]),
+        locator_evidence=tuple(redact(str(item))[:limits.locator_chars] for item in result.get("locator_evidence", [])[:limits.locator_items]),
         artifact_references=tuple(str(item)[:limits.artifact_chars] for item in result.get("screenshots", [])[:limits.artifact_items] if item),
     )

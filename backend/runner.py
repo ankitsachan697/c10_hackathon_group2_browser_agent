@@ -21,43 +21,13 @@ import stat
 from typing import Dict, Any, List, Optional, Callable
 from pathlib import Path
 
+try:
+    from .redaction import SensitiveDataRedactor
+except ImportError:
+    from redaction import SensitiveDataRedactor
 
-class SecretRedactor:
-    """Redacts plain secrets and passwords from strings and logs."""
-    def __init__(self, secrets: Optional[List[str]] = None):
-        self.secrets = set()
-        if secrets:
-            for s in secrets:
-                if s and len(s.strip()) > 2:  # Avoid redacting 1-2 char noise
-                    self.secrets.add(s.strip())
 
-    def add_secret(self, secret: str):
-        if secret and len(secret.strip()) > 2:
-            self.secrets.add(secret.strip())
-
-    def redact(self, text: str) -> str:
-        if not text:
-            return text
-        sanitized = text
-        # Redact known registered secrets
-        for s in self.secrets:
-            sanitized = sanitized.replace(s, "[REDACTED_SECRET:••••••••]")
-
-        # Redact typical password patterns in logs (e.g. password="...", password: "...")
-        sanitized = re.sub(
-            r'(password|passwd|secret|token|api_key|auth_token)\s*[:=]\s*["\']([^"\']+)["\']',
-            r'\1="[REDACTED_SECRET:••••••••]"',
-            sanitized,
-            flags=re.IGNORECASE
-        )
-        # Redact common env assignment lines like AUTH_SECRET=xyz
-        sanitized = re.sub(
-            r'(AUTH_SECRET|USER_PASSWORD|PASSWORD)\s*=\s*([^\s]+)',
-            r'\1=[REDACTED_SECRET:••••••••]',
-            sanitized,
-            flags=re.IGNORECASE
-        )
-        return sanitized
+SecretRedactor = SensitiveDataRedactor
 
 
 class UnsafeScriptError(ValueError):
@@ -390,7 +360,7 @@ class PlaywrightRunner:
                 f"context = browser.new_context(record_video_dir={repr(run_dir)}, record_video_size={{'width': 1280, 'height': 800}})\n        page = context.new_page()"
             )
 
-        credential_mask = """(() => { const apply = () => document.querySelectorAll('input[type=password],input[type=email],input[name=username],input#username,input#email,input[autocomplete=username]').forEach(el => { el.style.filter = 'blur(10px)'; }); new MutationObserver(apply).observe(document.documentElement, {subtree:true, childList:true}); addEventListener('DOMContentLoaded', apply); })();"""
+        credential_mask = """(() => { const apply = () => document.querySelectorAll('input[type=password],input[type=email],input[name=username],input#username,input#email,input[autocomplete=username],input[autocomplete^="cc-"],input[name*="card" i],input[id*="card" i],input[name*="cvv" i],input[id*="cvv" i],input[name*="cvc" i],input[id*="cvc" i]').forEach(el => { el.style.filter = 'blur(10px)'; }); new MutationObserver(apply).observe(document.documentElement, {subtree:true, childList:true}); addEventListener('DOMContentLoaded', apply); })();"""
         script = re.sub(
             r"(?m)^([ \t]*)(page\s*=\s*context\.new_page\(\)[ \t]*)$",
             lambda match: f"{match.group(1)}context.add_init_script({credential_mask!r})\n{match.group(1)}{match.group(2)}",

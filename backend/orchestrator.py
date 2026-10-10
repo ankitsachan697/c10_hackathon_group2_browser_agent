@@ -17,11 +17,13 @@ try:
     from .failure_context import build_failure_packet, classify_failure
     from .models import RunStatus, TriggerSource
     from .repositories import ArtifactRepository, JourneyRepository, RunRepository
+    from .redaction import SensitiveDataRedactor
 except ImportError:
     from database import Database
     from failure_context import build_failure_packet, classify_failure
     from models import RunStatus, TriggerSource
     from repositories import ArtifactRepository, JourneyRepository, RunRepository
+    from redaction import SensitiveDataRedactor
 
 
 class RunOverlapError(RuntimeError):
@@ -46,12 +48,9 @@ class RunOrchestrator:
         return datetime.now(timezone.utc).isoformat()
 
     def _record_attempt(self, run_id: str, attempt_number: int, result: dict[str, Any], secrets: Iterable[str] = ()) -> None:
+        redactor = SensitiveDataRedactor(secrets)
         def redact(value: Any) -> str:
-            rendered = str(value or "")
-            for secret in secrets:
-                if secret:
-                    rendered = rendered.replace(secret, "[REDACTED]")
-            return rendered
+            return redactor.redact(str(value or ""))
         with self.database.transaction() as connection:
             connection.execute(
                 """INSERT INTO run_attempts(id,run_id,attempt_number,status,stdout,stderr,created_at)
@@ -84,10 +83,7 @@ class RunOrchestrator:
                 continue
             if path.suffix.lower() in {".txt", ".log", ".html", ".htm", ".json"}:
                 rendered = path.read_text(encoding="utf-8", errors="replace")
-                for secret in secrets:
-                    if secret:
-                        rendered = rendered.replace(secret, "[REDACTED]")
-                path.write_text(rendered, encoding="utf-8")
+                path.write_text(redact(rendered), encoding="utf-8")
             relative = path.relative_to(root).as_posix()
             kind = (
                 "screenshot" if path.suffix.lower() in {".png", ".jpg", ".jpeg"}

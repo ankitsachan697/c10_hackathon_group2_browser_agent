@@ -98,7 +98,7 @@ runner = PlaywrightRunner(
 domain_database = Database(settings.database_path)
 domain_database.initialize()
 try:
-    credential_vault = CredentialVault(settings.credential_encryption_key)
+    credential_vault = CredentialVault.for_database(settings.database_path, settings.credential_encryption_key)
 except CredentialVaultError:
     credential_vault = None
 if settings.runner_timeout_seconds is not None:

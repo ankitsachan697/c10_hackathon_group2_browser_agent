@@ -34,15 +34,9 @@ Create a daily local time and IANA timezone from **Schedules**. Use **Run now** 
 Safe defaults are tracked in `config/application.json`. Deployment environment variables can override them. Only these values are secrets:
 
 - `N8N_BEARER_TOKEN` authenticates optional n8n generation and repair calls.
-- `CREDENTIAL_ENCRYPTION_KEY` encrypts reusable journey credentials.
+- The backend automatically creates a private `.credentials.key` file beside the SQLite database to encrypt reusable journey credentials. `CREDENTIAL_ENCRYPTION_KEY` is an optional deployment override, not a local setup requirement.
 
-Generate a credential key with:
-
-```bash
-backend/.venv/bin/python -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())'
-```
-
-Keep it stable for the lifetime of stored credentials. If it is lost or changed, existing credentials cannot be decrypted and must be replaced. Never commit either secret or expose them through a `NEXT_PUBLIC_*` variable.
+Back up the database and key file together. If the key is lost or changed, existing credentials cannot be decrypted and must be replaced. Never commit the key or expose it through a `NEXT_PUBLIC_*` variable. Logs, text evidence, and repair packets redact known credentials and recognizable payment details; screenshots and videos blur common credential and payment input fields. Review evidence before sharing because arbitrary page content may still contain sensitive data.
 
 For a remote backend, set `PLAYWRIGHT_CDP_ENDPOINT` to an authenticated private `ws://` or `wss://` Chrome DevTools endpoint. Never publish a raw browser debugging port.
 

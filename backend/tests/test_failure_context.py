@@ -20,6 +20,18 @@ def test_failure_packet_is_bounded_redacted_and_reference_only():
     assert "session.webm" not in packet.artifact_references
 
 
+def test_failure_packet_redacts_payment_details_without_registered_secret():
+    result = {
+        "stderr": "card 4111 1111 1111 1111 cvv=123",
+        "dom_snapshot": "<input value='4111-1111-1111-1111'>",
+        "script_snapshot": "print('4111111111111111')",
+    }
+    packet = build_failure_packet(result)
+    rendered = str(packet)
+    assert "4111" not in rendered
+    assert "123" not in rendered
+
+
 def test_selector_and_timeout_failures_are_eligible():
     assert classify_failure({"stderr": "Timeout waiting for locator('#submit')"}).eligible is True
     assert classify_failure({"stderr": "strict mode violation: element not found"}).eligible is True

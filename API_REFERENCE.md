@@ -19,7 +19,7 @@ The API uses `{ "data": ..., "error": null, "meta": {} }`. Failures use the same
 - `PUT /api/journeys/{id}/credentials` — replace the encrypted username/password pair without returning it.
 - `POST /api/journeys/{id}/run` — execute the saved script directly.
 
-Journey create and generate requests optionally accept `username` and `password`. They must be supplied together. Responses never return either value or the stored ciphertext; `has_credentials` indicates whether an encrypted credential pair exists. A missing encryption key returns `CREDENTIAL_VAULT_UNAVAILABLE` without persisting plaintext.
+Journey create and generate requests optionally accept `username` and `password`. They must be supplied together. Responses never return either value or the stored ciphertext; `has_credentials` indicates whether an encrypted credential pair exists. The backend creates a persistent private encryption key beside SQLite automatically. If that key is missing for existing credentials, the API returns `CREDENTIAL_VAULT_UNAVAILABLE` without persisting plaintext.
 
 ## Runs and evidence
 
