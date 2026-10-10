@@ -8,8 +8,8 @@ import type { GenerationOperation, Project, Run } from "@/lib/types";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { CreateProjectDialog } from "@/components/projects/CreateProjectDialog";
-import { RunActivity } from "@/components/runs/RunActivity";
 import { LiveRunProgress } from "@/components/runs/LiveRunProgress";
+import { RunResultTabs } from "@/components/runs/RunResultTabs";
 import { useActivityEvents } from "@/components/runs/useActivityEvents";
 import { CompanionPicker } from "@/components/browser/CompanionPicker";
 
@@ -154,7 +154,7 @@ export function JourneyForm() {
       <LiveRunProgress operationEvents={operationFeed.events} runEvents={runFeed.events} runStatus={run?.status}/>
       {operationFeed.error && <p className="form-error" role="alert">{operationFeed.error}</p>}
       {runFeed.error && <p className="form-error" role="alert">{runFeed.error}</p>}
-      <div className="journey-activity-stack"><RunActivity operationId={operation.id} suppliedEvents={operationFeed.events}/>{operation.run_id && <RunActivity runId={operation.run_id} suppliedEvents={runFeed.events}/>}</div>
+      {run && <RunResultTabs run={run} runEvents={runFeed.events}/>}
     </Card>}
     <CreateProjectDialog open={projectDialog} onClose={() => setProjectDialog(false)} onCreated={createdProject}/>
   </div>;

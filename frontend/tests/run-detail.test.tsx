@@ -18,11 +18,16 @@ test("shows audited timeline, evidence tabs, repair and rerun choices", async ()
   render(<RunDetailPage params={Promise.resolve({ id: "run1" })} />);
   expect(await screen.findByText("Passed after repair")).toBeInTheDocument();
   expect(screen.getByText("Attempt 1")).toBeInTheDocument();
+  expect(screen.getByRole("tab", { name: "Screenshots" })).toBeInTheDocument();
+  expect(screen.getByRole("tab", { name: "Recording" })).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("tab", { name: "Screenshots" }));
+  expect(screen.getByRole("img", { name: "failure.png" }).getAttribute("src")).toMatch(/\/api\/artifacts\/a1$/);
   fireEvent.click(screen.getByRole("tab", { name: "Repair" }));
   expect(screen.getByText("Selector changed")).toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "Run current script" }));
   fireEvent.click(screen.getByRole("button", { name: "Run this version" }));
   await waitFor(() => expect(fetch).toHaveBeenCalledWith(expect.stringContaining("/rerun"), expect.objectContaining({ method: "POST" })));
+  expect(vi.mocked(fetch).mock.calls.filter(([, init]) => init?.method === "POST").map(([, init]) => JSON.parse(String(init?.body)).mode)).toEqual(["current", "snapshot"]);
   fireEvent.click(screen.getByRole("button", { name: "Delete run" }));
   expect(await screen.findByRole("dialog")).toBeInTheDocument();
 });
