@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { CreateProjectDialog } from "@/components/projects/CreateProjectDialog";
 import { RunActivity } from "@/components/runs/RunActivity";
+import { CompanionPicker } from "@/components/browser/CompanionPicker";
 
 const operationKey = "outskill.activeGeneration";
 
@@ -25,6 +26,7 @@ export function JourneyForm() {
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [mode, setMode] = useState<"headless" | "headed">("headless");
+  const [companionId, setCompanionId] = useState("");
   const [offline, setOffline] = useState(false);
   const [operation, setOperation] = useState<GenerationOperation | null>(null);
   const [busy, setBusy] = useState(false);
@@ -80,7 +82,8 @@ export function JourneyForm() {
       const result = await api<GenerationOperation>("/api/operations/generations", {
         method: "POST", headers: { "Idempotency-Key": key },
         body: JSON.stringify({ project_id: projectId, name: name.trim(), target_url: url.trim(), objective: objective.trim(),
-          username: username || undefined, password: password || undefined, browser_mode: mode, offline }),
+          username: username || undefined, password: password || undefined, browser_mode: mode,
+          companion_id: mode === "headed" ? companionId || undefined : undefined, offline }),
       });
       sessionStorage.setItem(operationKey, result.id);
       setPassword("");
@@ -117,10 +120,7 @@ export function JourneyForm() {
           {Boolean(username) !== Boolean(password) && <p className="full form-error">Supply both username and password, or leave both empty.</p>}
         </div>
         <div className="journey-section-heading"><span>03</span><div><h2>Browser mode</h2><p>Choose how the first run opens Chromium.</p></div></div>
-        <div className="browser-mode-options" role="radiogroup" aria-label="Browser mode">
-          <label className={mode === "headless" ? "mode-card selected" : "mode-card"}><input type="radio" name="browser_mode" checked={mode === "headless"} onChange={() => setMode("headless")}/><strong>Headless</strong><span>Run in the configured browser worker.</span></label>
-          <label className={mode === "headed" ? "mode-card selected" : "mode-card"}><input type="radio" name="browser_mode" checked={mode === "headed"} onChange={() => setMode("headed")}/><strong>Watch in browser</strong><span>Show Chromium where the worker runs. A hosted server needs a paired local browser.</span></label>
-        </div>
+        <CompanionPicker mode={mode} onModeChange={setMode} companionId={companionId} onCompanionChange={setCompanionId}/>
         <label className="offline-row"><input type="checkbox" checked={offline} onChange={event => setOffline(event.target.checked)}/>Use local offline script generation if n8n is unavailable</label>
         {error && <p className="form-error" role="alert">{error}</p>}
         <div className="wizard-actions"><Button type="submit" aria-label="Generate and run" disabled={!canSubmit || busy || Boolean(operation)}><Sparkles size={16}/>{busy ? "Starting…" : "Generate and run"}</Button></div>

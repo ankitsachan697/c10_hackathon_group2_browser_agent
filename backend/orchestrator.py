@@ -181,6 +181,11 @@ class RunOrchestrator:
             if on_run_created:
                 on_run_created(run)
             browser_kwargs: dict[str, str] = {}
+            if (headed and self.browser_location == "local" and hasattr(self.runner, "container_image")
+                    and getattr(self.runner, "container_image", None) and not getattr(self.runner, "cdp_endpoint", None)):
+                emit("system", "browser.unavailable", {"reason": "Visible Chromium is unavailable in the isolated container"})
+                return self._finish(run["id"], {"status": RunStatus.NEEDS_ATTENTION.value,
+                                                 "final_decision": "Use a paired local browser or a configured private CDP endpoint"})
             if headed and self.browser_location == "hosted":
                 available = self.companion_registry.list_online() if self.companion_registry else []
                 parsed = urlparse(self.relay_base_url or "")

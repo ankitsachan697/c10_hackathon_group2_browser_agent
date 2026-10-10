@@ -35,6 +35,24 @@ def list_companions(svc: AppServices = Depends(services)):
     return ok(svc.companions.list_online() if svc.companions else [])
 
 
+@router.get("/capabilities")
+def browser_capabilities(svc: AppServices = Depends(services)):
+    orchestrator = svc.orchestrator
+    if not orchestrator:
+        return ok({"location": "unavailable", "headed_supported": False, "reason": "Browser runner is unavailable"})
+    if orchestrator.browser_location == "hosted":
+        online = svc.companions.list_online() if svc.companions else []
+        configured = bool(orchestrator.relay_base_url and svc.relay and svc.companions and svc.companions.admin_token)
+        supported = configured and bool(online)
+        return ok({"location": "hosted", "headed_supported": supported,
+                   "reason": None if supported else "Pair and start a local browser companion first"})
+    runner = orchestrator.runner
+    supported = bool(getattr(runner, "cdp_endpoint", None) or
+                     (not getattr(runner, "container_image", None) and getattr(runner, "allow_unsafe_local_execution", False)))
+    return ok({"location": "local", "headed_supported": supported,
+               "reason": None if supported else "Visible browser is unavailable in the isolated worker; use a paired local browser"})
+
+
 @router.post("/pair-codes")
 def issue_pair_code(x_companion_admin_token: str | None = Header(None), svc: AppServices = Depends(services)):
     require_operator(svc, x_companion_admin_token)

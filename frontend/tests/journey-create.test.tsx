@@ -66,8 +66,15 @@ test("submit invokes one generation operation and never puts credentials in obje
 });
 
 test("shows a retryable backend error without an unhandled rejection", async () => {
-  const fetchMock = vi.fn().mockRejectedValueOnce(new TypeError("Failed to fetch"))
-    .mockResolvedValueOnce(envelope([{ id: "p1", name: "Recovered", description: "" }]));
+  let projectCalls = 0;
+  const fetchMock = vi.fn(async (input: RequestInfo) => {
+    if (String(input) === "/api/projects") {
+      projectCalls += 1;
+      if (projectCalls === 1) throw new TypeError("Failed to fetch");
+      return envelope([{ id: "p1", name: "Recovered", description: "" }]);
+    }
+    return envelope([]);
+  });
   vi.stubGlobal("fetch", fetchMock);
   render(<JourneyCreatePage/>);
   expect(await screen.findByText(/Backend is unavailable/)).toBeInTheDocument();
