@@ -1,7 +1,8 @@
 # Live Agent Journey and Local Headed Execution
 
-**Date:** 2026-10-11  
-**Status:** Proposed for user review  
+**Date:** 2026-10-11
+
+**Status:** Proposed for user review
 **Supersedes:** The creation, visual-monitor, and live-log portions of `2026-10-10-browser-automation-studio-design.md`. Saved-script execution and the one-retry policy remain in force.
 
 ## Outcome
