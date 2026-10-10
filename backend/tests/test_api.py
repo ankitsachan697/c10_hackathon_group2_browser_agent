@@ -10,6 +10,7 @@ from backend.api.context import AppServices
 from backend.artifact_store import ArtifactStore
 from backend.database import Database
 from backend.credential_vault import CredentialVault
+from backend.n8n_client import AgentError
 from backend.orchestrator import RunOrchestrator
 from backend.repositories import ArtifactRepository
 from backend.scheduler import ScheduleService
@@ -127,6 +128,19 @@ def test_generation_is_explicit(api):
     })
     assert response.status_code == 201
     assert services.agents.generation_calls == 1
+
+
+def test_generation_returns_actionable_agent_configuration_error(api):
+    client, services = api
+    project = client.post("/api/projects", json={"name": "Web"}).json()["data"]
+    services.agents.generate_flow_script = lambda **kwargs: (_ for _ in ()).throw(AgentError("AGENT_NOT_CONFIGURED", "Discovery agent is not authenticated"))
+
+    response = client.post("/api/journeys/generate", json={
+        "project_id": project["id"], "name": "Login", "target_url": "https://example.test", "objective": "Sign in"
+    })
+
+    assert response.status_code == 503
+    assert response.json()["error"]["code"] == "AGENT_NOT_CONFIGURED"
 
 
 def test_generation_encrypts_credentials_and_only_sends_auth_metadata(api):

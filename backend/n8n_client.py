@@ -21,6 +21,12 @@ except ImportError:
     from config import Settings
 
 
+class AgentError(RuntimeError):
+    def __init__(self, code: str, message: str):
+        self.code = code
+        super().__init__(message)
+
+
 class N8nClient:
     def __init__(self, settings: Settings):
         self.settings = settings
@@ -58,23 +64,38 @@ class N8nClient:
                 timeout=self.settings.n8n_timeout_seconds,
             )
             resp.raise_for_status()
-            text = resp.text
-            for line in text.split("\n"):
+            try:
+                document = resp.json()
+            except ValueError:
+                document = None
+            if isinstance(document, dict):
+                return self._mcp_result(document)
+            for line in resp.text.split("\n"):
                 if line.startswith("data:"):
-                    data = json.loads(line[5:])
-                    if "result" in data:
-                        content = data["result"].get("content", [])
-                        if content and content[0].get("type") == "text":
-                            try:
-                                return json.loads(content[0]["text"])
-                            except Exception:
-                                return {"raw": content[0]["text"]}
-                        return data["result"]
-                    elif "error" in data:
-                        return {"error": data["error"]}
+                    return self._mcp_result(json.loads(line[5:]))
             return {"error": "No SSE data returned"}
         except Exception as e:
             return {"error": str(e)}
+
+    @staticmethod
+    def _mcp_result(document: Dict[str, Any]) -> Dict[str, Any]:
+        if "error" in document:
+            return {"error": document["error"]}
+        result = document.get("result", document)
+        if not isinstance(result, dict):
+            return {"raw": result}
+        if result.get("isError"):
+            return {"error": result.get("content") or "Agent tool failed"}
+        content = result.get("content")
+        if isinstance(content, list):
+            for item in content:
+                if isinstance(item, dict) and item.get("type") == "text":
+                    try:
+                        parsed = json.loads(item.get("text", ""))
+                    except (ValueError, TypeError):
+                        return {"raw": item.get("text", "")}
+                    return parsed if isinstance(parsed, dict) else {"raw": parsed}
+        return result
 
     def call_n8n_agent(self, agent_id: str | None, prompt: str) -> Optional[Dict[str, Any]]:
         """Invokes a published n8n agent directly via the MCP server."""
@@ -98,9 +119,11 @@ class N8nClient:
         if self.settings.n8n_temperature is not None:
             payload["arguments"]["temperature"] = self.settings.n8n_temperature
         res = self.call_mcp_tool("call_agent", payload["arguments"])
-        if isinstance(res, dict) and res.get("ok"):
-            return res
-        return None
+        if isinstance(res, dict) and "content" in res:
+            res = self._mcp_result(res)
+        if not isinstance(res, dict) or "error" in res:
+            raise AgentError("AGENT_UNAVAILABLE", "n8n agent could not be reached")
+        return res
 
     def search_workflows(self) -> List[Dict[str, Any]]:
         res = self.call_mcp_tool("search_workflows", {})
@@ -116,13 +139,19 @@ class N8nClient:
         url: str,
         task_objective: str,
         credentials_meta: Optional[Dict[str, Any]] = None,
+        offline: bool = False,
     ) -> Dict[str, Any]:
         """
         Uses Flow Discovery & Script Generator logic to create a robust Python Playwright script.
-        Calls the configured n8n agent when enabled, with a local synthesizer fallback.
+        Calls the configured n8n agent, unless local offline mode is explicit.
         """
-        agent_call_successful = False
-        n8n_agent_response = None
+        if offline:
+            synthesized = self._synthesize_script(url, task_objective, credentials_meta)
+            synthesized["agent_id"] = None
+            synthesized["agent_source"] = "Local resilient synthesizer"
+            return synthesized
+        if not self.settings.enable_n8n_generation or not self.is_configured:
+            raise AgentError("AGENT_NOT_CONFIGURED", "Discovery agent is not enabled or authenticated on this backend")
 
         has_auth = bool((credentials_meta or {}).get("has_auth"))
         prompt = (
@@ -137,42 +166,44 @@ class N8nClient:
             f"Assert any success message or heading like 'Logged In Successfully'."
         )
 
-        if self.settings.enable_n8n_generation:
+        agent_res = self.call_n8n_agent(self.settings.n8n_discovery_agent_id, prompt)
+        candidate = agent_res.get("response", agent_res) if isinstance(agent_res, dict) else agent_res
+        if isinstance(candidate, str):
             try:
-                agent_res = self.call_n8n_agent(self.settings.n8n_discovery_agent_id, prompt)
-                if agent_res and agent_res.get("response"):
-                    agent_call_successful = True
-                    n8n_agent_response = agent_res.get("response")
-            except Exception:
-                pass
+                candidate = json.loads(candidate)
+            except json.JSONDecodeError as error:
+                raise AgentError("AGENT_RESPONSE_INVALID", "Discovery agent did not return structured script data") from error
+        if not isinstance(candidate, dict):
+            raise AgentError("AGENT_RESPONSE_INVALID", "Discovery agent response is invalid")
+        script = candidate.get("python_script") or candidate.get("script")
+        steps = candidate.get("discovered_steps") or candidate.get("steps") or []
+        if not isinstance(script, str) or not 0 < len(script) <= 50_000 or not isinstance(steps, list):
+            raise AgentError("AGENT_RESPONSE_INVALID", "Discovery agent did not return a valid script")
+        response = {
+            "python_script": script,
+            "discovered_steps": [str(step)[:500] for step in steps[:50]],
+            "agent_id": self.settings.n8n_discovery_agent_id,
+            "agent_source": f"n8n Cloud Agent (ID: {self.settings.n8n_discovery_agent_id})",
+        }
+        if isinstance(agent_res, dict) and isinstance(agent_res.get("usage"), dict):
+            response["usage"] = agent_res["usage"]
+        return response
 
-        if agent_call_successful:
-            candidate = n8n_agent_response
-            if isinstance(candidate, str):
-                try:
-                    candidate = json.loads(candidate)
-                except json.JSONDecodeError:
-                    candidate = {"python_script": candidate}
-            if isinstance(candidate, dict):
-                script = candidate.get("python_script") or candidate.get("script")
-                steps = candidate.get("discovered_steps") or candidate.get("steps") or []
-                if isinstance(script, str) and 0 < len(script) <= 50_000 and isinstance(steps, list):
-                    return {
-                        "python_script": script,
-                        "discovered_steps": [str(step)[:500] for step in steps[:50]],
-                        "agent_id": self.settings.n8n_discovery_agent_id,
-                        "agent_source": f"n8n Cloud Agent (ID: {self.settings.n8n_discovery_agent_id})",
-                    }
-
-        # Explicit local fallback for offline demos.
-        synthesized = self._synthesize_script(url, task_objective, credentials_meta)
-        synthesized["agent_id"] = self.settings.n8n_discovery_agent_id
-        synthesized["agent_source"] = (
-            f"n8n Cloud Agent (ID: {self.settings.n8n_discovery_agent_id})"
-            if agent_call_successful
-            else "Local resilient synthesizer"
-        )
-        return synthesized
+    def review_visual(self, summary: Dict[str, Any]) -> Dict[str, Any]:
+        if not self.settings.enable_n8n_visual or not self.is_configured:
+            raise AgentError("AGENT_NOT_CONFIGURED", "Visual agent is not enabled or authenticated on this backend")
+        allowed = ("status", "mismatch_percentage", "mismatched_pixels", "tolerance_threshold", "baseline_key")
+        bounded = {key: summary[key] for key in allowed if key in summary and isinstance(summary[key], (str, int, float, bool))}
+        response = self.call_n8n_agent(self.settings.n8n_visual_agent_id, json.dumps(bounded, separators=(",", ":"))[:1000])
+        candidate = response.get("response", response) if isinstance(response, dict) else response
+        if isinstance(candidate, str):
+            try:
+                candidate = json.loads(candidate)
+            except json.JSONDecodeError:
+                candidate = {"summary": candidate}
+        if not isinstance(candidate, dict) or not isinstance(candidate.get("summary"), str):
+            raise AgentError("AGENT_RESPONSE_INVALID", "Visual agent response is invalid")
+        return {"summary": candidate["summary"][:1000], "agent_id": self.settings.n8n_visual_agent_id}
 
     # =========================================================================
     # AGENT 3: Error Diagnosis & Adaptive Repair Agent

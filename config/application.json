@@ -27,6 +27,7 @@
     "temperature": 0.1,
     "generationEnabled": true,
     "repairEnabled": true,
+    "visualEnabled": true,
     "localRepairEnabled": false
   }
 }

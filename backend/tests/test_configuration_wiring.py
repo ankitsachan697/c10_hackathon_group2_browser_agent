@@ -71,7 +71,7 @@ def test_n8n_generation_uses_configured_agent_and_limits(monkeypatch):
     def call_mcp_tool(tool_name, arguments):
         captured["tool_name"] = tool_name
         captured["arguments"] = arguments
-        return {"ok": True, "response": "generated"}
+        return {"ok": True, "response": {"python_script": "print('generated')", "discovered_steps": []}}
 
     monkeypatch.setattr(client, "call_mcp_tool", call_mcp_tool)
 
@@ -105,7 +105,7 @@ def test_n8n_repair_uses_its_configured_feature_and_agent(monkeypatch):
 
 def test_generated_login_script_does_not_supply_demo_credentials():
     script = N8nClient(Settings.from_env()).generate_flow_script(
-        "https://target.example.test", "login to the application"
+        "https://target.example.test", "login to the application", offline=True
     )["python_script"]
 
     assert 'os.environ.get("AUTH_USERNAME")' in script
@@ -116,7 +116,7 @@ def test_generated_login_script_does_not_supply_demo_credentials():
 
 def test_generated_login_script_asserts_quoted_expected_text():
     script = N8nClient(Settings.from_env()).generate_flow_script(
-        "https://target.example.test", 'login and validate "Logged In Successfully"'
+        "https://target.example.test", 'login and validate "Logged In Successfully"', offline=True
     )["python_script"]
 
     assert 'expected_text = "Logged In Successfully"' in script
@@ -125,7 +125,7 @@ def test_generated_login_script_asserts_quoted_expected_text():
 def test_generated_login_script_satisfies_execution_policy():
     from backend.runner import validate_browser_script
     script = N8nClient(Settings.from_env()).generate_flow_script(
-        "https://target.example.test", 'login and validate "Logged In Successfully"', {"has_auth": True}
+        "https://target.example.test", 'login and validate "Logged In Successfully"', {"has_auth": True}, offline=True
     )["python_script"]
     validate_browser_script(script)
     assert "page.get_by_text(expected_text, exact=False).wait_for" in script

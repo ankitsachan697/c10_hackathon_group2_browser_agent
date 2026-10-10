@@ -4,6 +4,7 @@ from pydantic import BaseModel, Field, HttpUrl
 from .context import AppServices, error, ok, services
 from ..models import TriggerSource
 from ..repositories import JourneyRepository, ProjectRepository
+from ..n8n_client import AgentError
 
 
 router = APIRouter(prefix="/journeys", tags=["journeys"])
@@ -21,6 +22,7 @@ class JourneyCreate(BaseModel):
 
 class JourneyGenerate(JourneyCreate):
     script: str = ""
+    offline: bool = False
 
 
 class JourneyCredentials(BaseModel):
@@ -62,9 +64,14 @@ def create_journey(payload: JourneyCreate, svc: AppServices = Depends(services))
 @router.post("/generate", status_code=201)
 def generate_journey(payload: JourneyGenerate, svc: AppServices = Depends(services)):
     has_auth = bool(payload.username and payload.password)
-    generated = svc.agents.generate_flow_script(
-        url=payload.target_url, task_objective=payload.objective, credentials_meta={"has_auth": has_auth}
-    )
+    try:
+        generated = svc.agents.generate_flow_script(
+            url=payload.target_url, task_objective=payload.objective, credentials_meta={"has_auth": has_auth},
+            offline=payload.offline,
+        )
+    except AgentError as failure:
+        raise HTTPException(503 if failure.code in {"AGENT_NOT_CONFIGURED", "AGENT_UNAVAILABLE"} else 502,
+                            detail=error(failure.code, str(failure))) from failure
     data = _create_data(payload, svc)
     data["script"] = generated["python_script"]
     journey = JourneyRepository(svc.database).create(data)
@@ -80,7 +87,11 @@ def get_journey(journey_id: str, svc: AppServices = Depends(services)):
 def regenerate(journey_id: str, svc: AppServices = Depends(services)):
     repo = JourneyRepository(svc.database)
     journey = _journey(repo, journey_id)
-    generated = svc.agents.generate_flow_script(url=journey["target_url"], task_objective=journey["objective"], credentials_meta={"has_auth": journey["has_credentials"]})
+    try:
+        generated = svc.agents.generate_flow_script(url=journey["target_url"], task_objective=journey["objective"], credentials_meta={"has_auth": journey["has_credentials"]})
+    except AgentError as failure:
+        raise HTTPException(503 if failure.code in {"AGENT_NOT_CONFIGURED", "AGENT_UNAVAILABLE"} else 502,
+                            detail=error(failure.code, str(failure))) from failure
     return ok(repo.update(journey_id, {"script": generated["python_script"]}))
 
 

@@ -129,6 +129,7 @@ class Settings:
     auto_repair_retries: int
     enable_n8n_generation: bool
     enable_n8n_repair: bool
+    enable_n8n_visual: bool
     enable_local_repair: bool
 
     @classmethod
@@ -168,5 +169,6 @@ class Settings:
             auto_repair_retries=1,
             enable_n8n_generation=_bool("ENABLE_N8N_GENERATION", _env_or_config("ENABLE_N8N_GENERATION", config, "n8n", "generationEnabled")),
             enable_n8n_repair=_bool("ENABLE_N8N_REPAIR", _env_or_config("ENABLE_N8N_REPAIR", config, "n8n", "repairEnabled")),
+            enable_n8n_visual=_bool("ENABLE_N8N_VISUAL", _env_or_config("ENABLE_N8N_VISUAL", config, "n8n", "visualEnabled")),
             enable_local_repair=_bool("ENABLE_LOCAL_REPAIR", _env_or_config("ENABLE_LOCAL_REPAIR", config, "n8n", "localRepairEnabled")),
         )
