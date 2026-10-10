@@ -1,12 +1,14 @@
 """Operator-controlled pairing and non-secret companion availability."""
 
 import hmac
+import asyncio
 
-from fastapi import APIRouter, Depends, Header, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException, WebSocket
 from pydantic import BaseModel, Field
 
 from .context import AppServices, error, ok, services
 from ..companion_registry import CompanionError
+from ..cdp_relay import RelayError
 
 
 router = APIRouter(prefix="/companions", tags=["companions"])
@@ -19,7 +21,6 @@ class ExchangeRequest(BaseModel):
 
 class HeartbeatRequest(BaseModel):
     device_id: str
-    credential: str
 
 
 def require_operator(svc: AppServices, token: str | None) -> None:
@@ -51,14 +52,47 @@ def exchange(payload: ExchangeRequest, svc: AppServices = Depends(services)):
 
 
 @router.post("/heartbeat")
-def heartbeat(payload: HeartbeatRequest, svc: AppServices = Depends(services)):
+def heartbeat(payload: HeartbeatRequest, authorization: str | None = Header(None), svc: AppServices = Depends(services)):
     if not svc.companions:
         raise HTTPException(503, detail=error("COMPANION_NOT_CONFIGURED", "Companion registry is unavailable"))
     try:
-        svc.companions.heartbeat(payload.device_id, payload.credential)
+        svc.companions.heartbeat(payload.device_id, (authorization or "").removeprefix("Bearer "))
         return ok({"online": True})
     except CompanionError as failure:
         raise HTTPException(403, detail=error("INVALID_DEVICE", str(failure))) from failure
+
+
+@router.get("/{device_id}/sessions")
+def pending_sessions(device_id: str, authorization: str | None = Header(None), svc: AppServices = Depends(services)):
+    try:
+        svc.companions.authenticate(device_id, (authorization or "").removeprefix("Bearer "))
+        return ok(svc.relay.pending_for(device_id) if svc.relay else [])
+    except (CompanionError, AttributeError) as failure:
+        raise HTTPException(403, detail=error("INVALID_DEVICE", "Companion authentication failed")) from failure
+
+
+@router.websocket("/relay/{session_id}/companion")
+async def companion_socket(websocket: WebSocket, session_id: str):
+    svc = websocket.app.state.services
+    device_id = websocket.headers.get("x-companion-device-id", "")
+    credential = websocket.headers.get("authorization", "").removeprefix("Bearer ")
+    try:
+        svc.companions.authenticate(device_id, credential)
+        await websocket.accept()
+        await svc.relay.attach_companion(session_id, device_id, websocket)
+    except (CompanionError, RelayError, AttributeError):
+        await websocket.close(code=1008)
+
+
+@router.websocket("/relay/{session_id}/runner")
+async def runner_socket(websocket: WebSocket, session_id: str):
+    svc = websocket.app.state.services
+    secret = websocket.headers.get("authorization", "").removeprefix("Bearer ")
+    try:
+        await websocket.accept()
+        await svc.relay.attach_runner(session_id, secret, websocket)
+    except (RelayError, asyncio.TimeoutError, AttributeError):
+        await websocket.close(code=1008)
 
 
 @router.delete("/{device_id}")

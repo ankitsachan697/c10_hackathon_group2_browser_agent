@@ -17,6 +17,7 @@ class AppServices:
     credential_vault: Any = None
     generation: Any = None
     companions: Any = None
+    relay: Any = None
 
 
 def services(request: Request) -> AppServices:

@@ -47,6 +47,7 @@ from artifact_store import ArtifactStore
 from credential_vault import CredentialVault, CredentialVaultError
 from generation import GenerationCoordinator
 from companion_registry import CompanionRegistry
+from cdp_relay import CdpRelay
 from repositories import ArtifactRepository
 try:
     from backend.api import install_api
@@ -103,6 +104,7 @@ runner = PlaywrightRunner(
 domain_database = Database(settings.database_path)
 domain_database.initialize()
 companion_registry = CompanionRegistry(domain_database, settings.companion_admin_token)
+cdp_relay = CdpRelay()
 try:
     credential_vault = CredentialVault.for_database(settings.database_path, settings.credential_encryption_key)
 except CredentialVaultError:
@@ -653,6 +655,7 @@ app.state.services = AppServices(
     credential_vault=credential_vault,
     generation=generation_coordinator,
     companions=companion_registry,
+    relay=cdp_relay,
 )
 install_api(app)
 

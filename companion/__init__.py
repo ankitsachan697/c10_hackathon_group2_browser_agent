@@ -1,0 +1,1 @@
+"""Local headed Chromium companion."""
