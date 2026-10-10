@@ -13,6 +13,8 @@ test("one form offers project creation, objective, credentials and browser mode"
   expect(screen.getByLabelText("Journey name")).toBeInTheDocument();
   expect(screen.getByLabelText("Target URL")).toBeInTheDocument();
   expect(screen.getByLabelText("Objective")).toBeInTheDocument();
+  expect(screen.getAllByRole("textbox")[0]).toHaveAccessibleName("Objective");
+  expect(screen.getByRole("button", { name: "Verify & record live" })).toBeInTheDocument();
   expect(screen.getByLabelText("Username")).toBeInTheDocument();
   expect(screen.getByLabelText("Password")).toHaveAttribute("type", "password");
   expect(screen.getByRole("radio", { name: /Headless/ })).toBeChecked();
@@ -68,7 +70,7 @@ test("submit invokes one generation operation and never puts credentials in obje
   fireEvent.change(screen.getByLabelText("Objective"), { target: { value: "Validate Logged In Successfully" } });
   fireEvent.change(screen.getByLabelText("Username"), { target: { value: "student" } });
   fireEvent.change(screen.getByLabelText("Password"), { target: { value: "Password123" } });
-  await userEvent.click(screen.getByRole("button", { name: "Generate and run" }));
+  await userEvent.click(screen.getByRole("button", { name: "Verify & record live" }));
   await waitFor(() => expect(JSON.parse(submitted).password).toBe("Password123"));
   expect(JSON.parse(submitted).browser_mode).toBe("headless");
   expect(JSON.parse(submitted).objective).not.toContain("Password123");
@@ -77,6 +79,23 @@ test("submit invokes one generation operation and never puts credentials in obje
   }));
   expect(await screen.findByRole("link", { name: "Open run" })).toHaveAttribute("href", "/runs/run1");
   expect(screen.queryByText("Supply both username and password, or leave both empty.")).not.toBeInTheDocument();
+});
+
+test("rejected submission keeps masked credentials available for retry", async () => {
+  vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo) => String(input) === "/api/operations/generations"
+    ? new Response(JSON.stringify({ data: null, error: { code: "UNAVAILABLE", message: "Try again" }, meta: {} }), { status: 503 })
+    : envelope([{ id: "p1", name: "Web", description: "" }])));
+  render(<JourneyCreatePage/>);
+  await screen.findByRole("option", { name: "Web" });
+  fireEvent.change(screen.getByLabelText("Journey name"), { target: { value: "Login" } });
+  fireEvent.change(screen.getByLabelText("Target URL"), { target: { value: "https://example.test/login" } });
+  fireEvent.change(screen.getByLabelText("Objective"), { target: { value: "Log in" } });
+  fireEvent.change(screen.getByLabelText("Username"), { target: { value: "student" } });
+  fireEvent.change(screen.getByLabelText("Password"), { target: { value: "retry-secret" } });
+  await userEvent.click(screen.getByRole("button", { name: "Verify & record live" }));
+  expect(await screen.findByRole("alert")).toHaveTextContent("Try again");
+  expect(screen.getByLabelText("Password")).toHaveAttribute("type", "password");
+  expect(screen.getByLabelText("Password")).toHaveValue("retry-secret");
 });
 
 test("shows a retryable backend error without an unhandled rejection", async () => {

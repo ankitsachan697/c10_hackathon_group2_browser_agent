@@ -107,26 +107,27 @@ export function JourneyForm() {
     <div className="page-heading"><div><p className="eyebrow">New journey</p><h1>Describe what the browser should do</h1><p>Discovery creates a saved Playwright script, then runs it once automatically.</p></div></div>
     <Card>
       <form onSubmit={submit} className="journey-form">
-        <div className="journey-section-heading"><span>01</span><div><h2>Journey</h2><p>Group it in a project and describe the outcome you expect.</p></div></div>
+        <div className="journey-section-heading"><span>01</span><div><h2>What should the browser verify?</h2><p>Describe the user journey and the outcome to check. The first run starts after you confirm below.</p></div></div>
+        <label className="objective-editor">Objective<textarea aria-label="Objective" value={objective} onChange={event => setObjective(event.target.value)} rows={6} placeholder="Log in to the target site and verify the success message. Keep credentials in the secure fields below." required/></label>
+        <div className="journey-section-heading"><span>02</span><div><h2>Journey details</h2><p>Group this verification with related runs and set its starting page.</p></div></div>
         <div className="form-grid">
           <div className="project-field">
             {projectsLoading ? <p className="muted">Loading projects…</p> : projectsError ? <div className="inline-error"><span>{projectsError}</span><Button type="button" onClick={loadProjects} className="button-secondary">Retry projects</Button></div> : projects.length === 0 ? <div className="first-project"><FolderPlus/><div><strong>Create a project to begin</strong><span>Projects hold related journeys and run history.</span></div><Button type="button" onClick={() => setProjectDialog(true)}>Create first project</Button></div> : <label>Project<select aria-label="Project" value={projectId} onChange={event => event.target.value === "__new__" ? setProjectDialog(true) : setProjectId(event.target.value)}>{projects.map(project => <option key={project.id} value={project.id}>{project.name}</option>)}<option value="__new__">+ New project…</option></select></label>}
           </div>
           <label>Journey name<input aria-label="Journey name" value={name} onChange={event => setName(event.target.value)} placeholder="Login and verify dashboard" required/></label>
           <label className="full">Target URL<input aria-label="Target URL" type="url" value={url} onChange={event => setUrl(event.target.value)} placeholder="https://app.example/login" required/></label>
-          <label className="full">Objective<textarea aria-label="Objective" value={objective} onChange={event => setObjective(event.target.value)} rows={3} placeholder="Log in and verify the success message. Keep credentials in the fields below." required/></label>
         </div>
-        <div className="journey-section-heading"><span>02</span><div><h2>Credentials</h2><p>Optional. These are passed to the browser worker, not the discovery agent.</p></div></div>
+        <div className="journey-section-heading"><span>03</span><div><h2>Credentials</h2><p>Optional. These are passed to the browser worker, not the discovery agent.</p></div></div>
         <div className="form-grid">
           <label>Username<input aria-label="Username" autoComplete="username" value={username} onChange={event => setUsername(event.target.value)}/></label>
           <label>Password<div className="password-field"><input ref={passwordRef} aria-label="Password" autoComplete="current-password" type={showPassword ? "text" : "password"} onChange={event => setPassword(event.target.value)} onBlur={event => setPassword(event.target.value)}/><button type="button" aria-label={showPassword ? "Hide password" : "Show password"} onClick={() => setShowPassword(value => !value)}>{showPassword ? <EyeOff size={16}/> : <Eye size={16}/>}</button></div></label>
           {!operation && Boolean(username) !== Boolean(password) && <p className="full form-error">Supply both username and password, or leave both empty.</p>}
         </div>
-        <div className="journey-section-heading"><span>03</span><div><h2>Browser mode</h2><p>Choose how the first run opens Chromium.</p></div></div>
+        <div className="journey-section-heading"><span>04</span><div><h2>Browser mode</h2><p>Choose how the first run opens Chromium.</p></div></div>
         <CompanionPicker mode={mode} onModeChange={setMode} companionId={companionId} onCompanionChange={setCompanionId}/>
         <label className="offline-row"><input type="checkbox" checked={offline} onChange={event => setOffline(event.target.checked)}/>Use local offline script generation if n8n is unavailable</label>
         {error && <p className="form-error" role="alert">{error}</p>}
-        <div className="wizard-actions"><Button type="submit" aria-label="Generate and run" disabled={!canSubmit || busy || Boolean(operation)}><Sparkles size={16}/>{busy ? "Starting…" : "Generate and run"}</Button></div>
+        <div className="wizard-actions"><Button type="submit" aria-label="Verify & record live" disabled={!canSubmit || busy || Boolean(operation)}><Sparkles size={16}/>{busy ? "Starting…" : "Verify & record live"}</Button></div>
       </form>
     </Card>
     {operation && <Card><div className="operation-heading"><div><p className="eyebrow">Live activity</p><h2>{operation.status === "FAILED" ? "Generation needs attention" : operation.status === "COMPLETED" ? "First run complete" : "Discovering and running"}</h2></div><div className="run-actions">{operation.run_id && <Link className="button primary-link" href={`/runs/${operation.run_id}`}>Open run</Link>}{["FAILED", "COMPLETED"].includes(operation.status) && <Button type="button" className="button-secondary" onClick={startAnother}>Create another journey</Button>}</div></div>
