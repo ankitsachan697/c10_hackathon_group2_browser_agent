@@ -8,21 +8,19 @@ import sys
 import json
 import requests
 
-N8N_MCP_URL = "https://outskilltraining.app.n8n.cloud/mcp-server/http"
-N8N_BEARER_TOKEN = (
-    "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9."
-    "eyJzdWIiOiI4MDMyMWU3Ni1iMjYyLTQzNDgtYjRiMy1mYTZhZWQwNGM3NzQiLCJpc3MiOiJuOG4iLCJhdWQiOiJtY3Atc2VydmVyLWFwaSIsImp0aSI6ImI2ZDJlNDc2LTFhYWMtNGE4Ny1iNmUwLTI2ZjA0MzZjMTQzMyIsImlhdCI6MTc5MTY0MjUwMn0."
-    "CzpW6Y-No_9Sh9LekYlMyE-SoTOmjWFE3OCA641iFGg"
-)
-
-headers = {
-    "Authorization": f"Bearer {N8N_BEARER_TOKEN}",
-    "Content-Type": "application/json",
-    "Accept": "application/json, text/event-stream",
-}
+N8N_MCP_URL = os.getenv("N8N_MCP_URL")
+N8N_BEARER_TOKEN = os.getenv("N8N_BEARER_TOKEN")
 
 
 def call_mcp_tool(tool_name: str, args: dict):
+    if not N8N_MCP_URL or not N8N_BEARER_TOKEN:
+        return {"error": "n8n MCP endpoint and bearer token are not configured"}
+
+    headers = {
+        "Authorization": f"Bearer {N8N_BEARER_TOKEN}",
+        "Content-Type": "application/json",
+        "Accept": "application/json, text/event-stream",
+    }
     payload = {
         "jsonrpc": "2.0",
         "id": 1,

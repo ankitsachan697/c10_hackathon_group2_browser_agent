@@ -31,28 +31,30 @@ from pydantic import BaseModel
 
 # Add current dir to sys.path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from config import Settings
 from runner import PlaywrightRunner
 from visual_diff import compare_images
-from n8n_client import n8n_client
+from n8n_client import N8nClient
 from test_suite_manager import suite_manager
 
+settings = Settings.from_env()
+n8n_client = N8nClient(settings)
+
 app = FastAPI(
-    title="AI Self-Healing Browser Automation API",
+    title=settings.product_name or "API",
     description="Backend orchestration engine for browser automation agents",
     version="1.0.0",
 )
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
+    allow_origins=list(settings.cors_origins),
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-ARTIFACTS_DIR = os.path.abspath(
-    os.path.join(os.path.dirname(__file__), "..", "artifacts")
-)
+ARTIFACTS_DIR = str(settings.artifacts_root)
 os.makedirs(ARTIFACTS_DIR, exist_ok=True)
 runner = PlaywrightRunner(artifacts_dir=ARTIFACTS_DIR)
 
@@ -72,7 +74,7 @@ class ExecuteRequest(BaseModel):
     env_vars: Optional[Dict[str, str]] = None
     secrets_to_mask: Optional[List[str]] = None
     headed: bool = False
-    timeout_seconds: int = 45
+    timeout_seconds: int = settings.runner_timeout_seconds
 
 
 class RepairRequest(BaseModel):
@@ -85,7 +87,7 @@ class RepairRequest(BaseModel):
 class VisualDiffRequest(BaseModel):
     baseline_path: str
     candidate_path: str
-    threshold: float = 0.1
+    threshold: float = settings.visual_diff_threshold
     tolerance_percent: float = 0.5
 
 
@@ -94,7 +96,7 @@ class AutonomousRunRequest(BaseModel):
     task_objective: str
     username: Optional[str] = None
     password: Optional[str] = None
-    max_repair_attempts: int = 3
+    max_repair_attempts: Optional[int] = None
     run_visual_regression: bool = True
     headed: bool = False
     test_case_name: Optional[str] = None
@@ -102,12 +104,12 @@ class AutonomousRunRequest(BaseModel):
 
 class ExecuteScriptRequest(BaseModel):
     script: str
-    url: Optional[str] = "https://example.com"
-    test_name: Optional[str] = "Direct Script Validation"
+    url: Optional[str] = None
+    test_name: Optional[str] = None
     headed: bool = False
     username: Optional[str] = None
     password: Optional[str] = None
-    timeout_seconds: int = 45
+    timeout_seconds: int = settings.runner_timeout_seconds
     auto_heal: bool = True
 
 
@@ -132,7 +134,7 @@ def health_check():
         "status": "healthy",
         "timestamp": time.time(),
         "runner_ready": True,
-        "n8n_connected": True,
+        "n8n_connected": n8n_client.is_configured,
     }
 
 
@@ -256,7 +258,7 @@ async def autonomous_run(req: AutonomousRunRequest):
 
     # Execution Loop with Adaptive Self-Healing
     attempt = 1
-    max_attempts = req.max_repair_attempts
+    max_attempts = 1 + settings.auto_repair_retries
     last_exec_res = None
     healing_history = []
 
@@ -451,10 +453,10 @@ async def execute_direct_script(req: ExecuteScriptRequest):
 
     # Check Visual Regression / Golden Baseline Lifecycle
     visual_res = None
-    if exec_res.get("screenshots"):
+    if exec_res.get("screenshots") and req.url:
         visual_res = suite_manager.handle_visual_baseline_lifecycle(
-            url=req.url or "https://example.com",
-            test_case_name=req.test_name or "Direct Validation",
+            url=req.url,
+            test_case_name=req.test_name or "",
             screenshots=exec_res["screenshots"],
             run_dir=exec_res["run_dir"],
         )
@@ -521,8 +523,8 @@ async def run_saved_test_case(case_id: str, headed: bool = False):
 
     exec_req = ExecuteScriptRequest(
         script=case.get("script", ""),
-        url=case.get("target_url", "https://example.com"),
-        test_name=case.get("name", "Suite Run"),
+        url=case.get("target_url"),
+        test_name=case.get("name"),
         headed=headed,
         username=case.get("username"),
         password=case.get("password"),

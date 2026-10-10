@@ -14,29 +14,32 @@ import time
 import requests
 from typing import Dict, Any, Optional, List
 
-N8N_MCP_URL = os.environ.get(
-    "N8N_MCP_URL",
-    "https://outskilltraining.app.n8n.cloud/mcp-server/http"
-)
-N8N_BEARER_TOKEN = os.environ.get(
-    "N8N_BEARER_TOKEN",
-    "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI4MDMyMWU3Ni1iMjYyLTQzNDgtYjRiMy1mYTZhZWQwNGM3NzQiLCJpc3MiOiJuOG4iLCJhdWQiOiJtY3Atc2VydmVyLWFwaSIsImp0aSI6ImI2ZDJlNDc2LTFhYWMtNGE4Ny1iNmUwLTI2ZjA0MzZjMTQzMyIsImlhdCI6MTc5MTY0MjUwMn0.CzpW6Y-No_9Sh9LekYlMyE-SoTOmjWFE3OCA641iFGg"
-)
-OPENAI_CREDENTIAL_ID = "p3HjGydOnUih77wo"  # "Trusota" on n8n instance
+try:
+    from .config import Settings
+except ImportError:
+    from config import Settings
 
 
 class N8nClient:
-    def __init__(self, mcp_url: str = N8N_MCP_URL, token: str = N8N_BEARER_TOKEN):
-        self.mcp_url = mcp_url
-        self.token = token
+    def __init__(self, settings: Settings):
+        self.settings = settings
+        self.mcp_url = settings.n8n_mcp_url
+        self.token = settings.n8n_bearer_token
         self.headers = {
-            "Authorization": f"Bearer {self.token}",
             "Content-Type": "application/json",
             "Accept": "application/json, text/event-stream",
         }
+        if self.token:
+            self.headers["Authorization"] = f"Bearer {self.token}"
+
+    @property
+    def is_configured(self) -> bool:
+        return bool(self.mcp_url and self.token)
 
     def call_mcp_tool(self, tool_name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
         """Calls a tool on the n8n MCP server."""
+        if not self.is_configured:
+            return {"error": "n8n MCP endpoint and bearer token are not configured"}
         payload = {
             "jsonrpc": "2.0",
             "id": int(time.time()),
@@ -47,7 +50,12 @@ class N8nClient:
             },
         }
         try:
-            resp = requests.post(self.mcp_url, headers=self.headers, json=payload, timeout=30)
+            resp = requests.post(
+                self.mcp_url,
+                headers=self.headers,
+                json=payload,
+                timeout=self.settings.n8n_timeout_seconds,
+            )
             resp.raise_for_status()
             text = resp.text
             for line in text.split("\n"):
@@ -360,4 +368,4 @@ if __name__ == "__main__":
         return healed
 
 
-n8n_client = N8nClient()
+n8n_client = N8nClient(Settings.from_env())
