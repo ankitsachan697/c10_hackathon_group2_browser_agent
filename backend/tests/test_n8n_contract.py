@@ -7,6 +7,7 @@ from backend.n8n_client import N8nClient
 
 
 def client(monkeypatch, *, token=None, generation=True, visual=True):
+    monkeypatch.setattr("backend.n8n_client.inspect_target_controls", lambda _url: "")
     monkeypatch.setenv("ENABLE_N8N_GENERATION", str(generation).lower())
     monkeypatch.setenv("ENABLE_N8N_VISUAL", str(visual).lower())
     if token:
@@ -70,6 +71,7 @@ def test_discovery_accepts_json_code_fence_and_requests_structured_output(monkey
     agent = client(monkeypatch, token="test-token")
     prompts = []
     payload = {"python_script": "print('generated')", "discovered_steps": ["open page"]}
+    monkeypatch.setattr("backend.n8n_client.inspect_target_controls", lambda _url: "tag=button; id=submit; text=Submit")
     monkeypatch.setattr(agent, "call_n8n_agent", lambda _agent_id, prompt: prompts.append(prompt) or {
         "response": "```json\n" + json.dumps(payload) + "\n```"
     })
@@ -84,6 +86,7 @@ def test_discovery_accepts_json_code_fence_and_requests_structured_output(monkey
     assert "get_by_role" in prompts[0]
     assert "label=" in prompts[0]
     assert "button[type='submit']" in prompts[0]
+    assert "tag=button; id=submit; text=Submit" in prompts[0]
 
 
 def test_explicit_offline_generation_is_labelled(monkeypatch):

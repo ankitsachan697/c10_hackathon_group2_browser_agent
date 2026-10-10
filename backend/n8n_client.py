@@ -17,8 +17,10 @@ from typing import Dict, Any, Optional, List
 
 try:
     from .config import Settings
+    from .page_controls import inspect_target_controls
 except ImportError:
     from config import Settings
+    from page_controls import inspect_target_controls
 
 
 class AgentError(RuntimeError):
@@ -154,9 +156,12 @@ class N8nClient:
             raise AgentError("AGENT_NOT_CONFIGURED", "Discovery agent is not enabled or authenticated on this backend")
 
         has_auth = bool((credentials_meta or {}).get("has_auth"))
+        controls = inspect_target_controls(url)
         prompt = (
             f"Target URL: {url}\n"
             f"Objective: {task_objective}\n"
+            f"Observed form controls (HTML only, no field values):\n{controls or 'Unavailable; inspect controls at runtime.'}\n"
+            f"Prefer these observed control names and attributes; do not invent element names. "
             f"Authentication required: {'yes' if has_auth else 'no'}. "
             f"When yes, read both AUTH_USERNAME and AUTH_PASSWORD from the environment. "
             f"Generate a robust Python Playwright script using sync API (sync_playwright). "
