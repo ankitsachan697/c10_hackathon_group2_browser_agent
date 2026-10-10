@@ -39,12 +39,20 @@ Configure `N8N_BEARER_TOKEN` in repository or environment secrets when agent cal
 
 ### Browser execution after deployment
 
-The runner launches Chromium locally by default. For a backend deployed on a server, set `PLAYWRIGHT_CDP_ENDPOINT` to a secured `ws://` or `wss://` Chrome DevTools endpoint. Saved scripts continue to call `chromium.launch()`; the runner redirects that call to `connect_over_cdp()` without changing the saved script. This works with a browser service or a local Chrome exposed through an authenticated private tunnel. Never expose a raw debugging port to the public internet.
+Headless runs use the isolated Docker worker. To watch a run on your computer when the backend is remote, pair the local browser companion:
+
+1. Set `RUNNER_BROWSER_LOCATION=hosted`, `RUNNER_RELAY_BASE_URL` to a WebSocket-reachable backend URL (`wss://...` in deployment), and a private `COMPANION_ADMIN_TOKEN` in the backend runtime. The relay URL must be reachable from inside the runner container. The reverse proxy must route `/api/companions/relay/*` WebSockets directly to FastAPI; the Next.js HTTP proxy is not the WebSocket endpoint.
+2. An operator calls `POST /api/companions/pair-codes` with `X-Companion-Admin-Token`. The returned code expires after five minutes and can be used once.
+3. On the computer where the browser should appear, run `backend/.venv/bin/python -m companion.browser_companion pair --server https://YOUR_BACKEND --code YOUR_CODE --device-name My-laptop`, then `backend/.venv/bin/python -m companion.browser_companion run --server https://YOUR_BACKEND`. The device credential stays in a private local file. The companion requires HTTPS except for loopback development.
+4. Choose **Watch in browser** and the online device. The companion asks for local approval for that run before opening Chromium. If it is offline or approval times out, the run becomes **Needs attention**; no headless fallback occurs.
+
+The relay transfers scoped CDP frames, not generated Python. Chromium listens only on the companion's loopback interface; no public Chrome debugging port is needed. For an advanced private browser service, `PLAYWRIGHT_CDP_ENDPOINT` remains available, but it is not a way to reach an arbitrary laptop automatically. Run the backend relay in one Uvicorn process; in-memory active sessions are not shared across workers. Keep the operator token and device credential out of browser-facing configuration and logs.
 
 ## Verification
 
 ```bash
 PYTHONPATH=. backend/.venv/bin/pytest -q
+PYTHONPATH=. backend/.venv/bin/pytest companion/tests -q
 npm --prefix frontend test -- --run
 npm --prefix frontend run lint
 npm --prefix frontend run build

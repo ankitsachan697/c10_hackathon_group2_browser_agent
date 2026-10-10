@@ -18,11 +18,14 @@ flowchart LR
     EVENTS --> UI
     STORE --> VIS[Local visual comparison]
     VIS -->|bounded metrics| REVIEW[n8n visual agent]
+    ORCH -->|headed, selected device| RELAY[Scoped CDP relay]
+    RELAY <-->|outbound TLS| COMPANION[Local browser companion]
+    COMPANION --> CHROME[Loopback Chromium]
 ```
 
 FastAPI owns resource state, orchestration, scheduling, retry policy, and artifact lifecycle. n8n never decides whether an operational run starts and does not sit in the normal execution path.
 
-The execution adapter supports two browser locations: local Chromium for development and a deployment-configured Chrome DevTools endpoint for hosted environments. `PLAYWRIGHT_CDP_ENDPOINT` may point to a managed browser or to a user's local Chrome through an authenticated private tunnel. The endpoint is injected only into the runner subprocess and is not stored with journeys or runs.
+The execution adapter supports the isolated worker, a configured private Chrome DevTools endpoint, and a paired local companion for hosted headed runs. A companion session is scoped to one run and one device. The local companion uses a short-lived one-time pairing code, a revocable hashed device credential, an outbound WebSocket, and a loopback-only Chromium debugging socket. The runner receives a per-run relay URL and secret in its isolated environment; generated Python and reusable credentials never arrive as a separate companion job payload. CDP itself carries browser commands and may contain field values, so relay frames are never logged. Active relay sessions are in memory and require one backend process or sticky routing to that process.
 
 ## Run lifecycle
 

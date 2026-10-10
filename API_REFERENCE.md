@@ -21,7 +21,7 @@ The API uses `{ "data": ..., "error": null, "meta": {} }`. Failures use the same
 - `POST /api/journeys/generate` — compatibility endpoint that generates and saves without automatically running.
 - `GET|DELETE /api/journeys/{id}` — inspect or delete.
 - `PUT /api/journeys/{id}/credentials` — replace the encrypted username/password pair without returning it.
-- `POST /api/journeys/{id}/run` — execute the saved script directly.
+- `POST /api/journeys/{id}/run` — execute the saved script directly; optional `browser_mode` and `companion_id` select a visible paired device.
 
 Journey create and generate requests optionally accept `username` and `password`. They must be supplied together. Responses never return either value or the stored ciphertext; `has_credentials` indicates whether an encrypted credential pair exists. The backend creates a persistent private encryption key beside SQLite automatically. If that key is missing for existing credentials, the API returns `CREDENTIAL_VAULT_UNAVAILABLE` without persisting plaintext.
 
@@ -30,11 +30,23 @@ Journey create and generate requests optionally accept `username` and `password`
 - `GET /api/runs` — list history.
 - `GET /api/runs/{id}` — retrieve a run with attempts and artifacts.
 - `GET /api/runs/{id}/events?after_seq=N` — ordered, redacted run, action, repair, and visual events.
-- `POST /api/runs/{id}/rerun` with mode `current` or `snapshot`.
+- `POST /api/runs/{id}/rerun` with mode `current` or `snapshot`, plus optional `browser_mode` and `companion_id`.
 - `DELETE /api/runs/{id}` — delete and move evidence to trash.
 - `GET /api/artifacts/{artifact_id}` — download evidence by stable ID.
 
 Operational endpoints never generate scripts. `/api/autonomous-run` is a `410 Gone` migration response.
+
+## Local browser companions
+
+- `GET /api/companions/capabilities` — non-secret browser-location and headed-availability status.
+- `GET /api/companions` — online device IDs and names only.
+- `POST /api/companions/pair-codes` — operator-only, requires `X-Companion-Admin-Token`; returns a one-time five-minute code.
+- `POST /api/companions/exchange` — exchange that code for a device credential; the credential is shown only in this response.
+- `POST /api/companions/heartbeat` and `GET /api/companions/{id}/sessions` — companion-authenticated via `Authorization: Bearer`.
+- `DELETE /api/companions/{id}` — operator-only device revocation.
+- `/api/companions/relay/{session_id}/companion` and `/runner` — authenticated WebSocket endpoints for one scoped CDP relay session. Do not route these through the Next.js HTTP proxy.
+
+The companion asks for approval locally before connecting; control messages contain only session and run IDs. A remote companion refuses plaintext HTTP. The backend's relay URL must use WSS unless it addresses loopback or the Docker host gateway.
 
 ## Schedules and system
 

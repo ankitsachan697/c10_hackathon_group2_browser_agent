@@ -158,7 +158,7 @@ class RunOrchestrator:
         await self._claim(scope)
         relay_session_id: str | None = None
         try:
-            trigger_value = trigger.value if isinstance(trigger, TriggerSource) else str(trigger)
+            trigger_value = trigger.value if isinstance(getattr(trigger, "value", None), str) else str(trigger)
             script, version = journey["script"], journey["script_version"]
             if trigger_value == TriggerSource.RERUN_SNAPSHOT.value and script_version:
                 historic = self.runs.get(script_version)

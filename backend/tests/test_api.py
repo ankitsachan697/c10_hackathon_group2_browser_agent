@@ -97,6 +97,7 @@ def test_run_now_and_reruns_never_generate(api):
     project, journey = create_journey(client)
     direct = client.post(f"/api/journeys/{journey['id']}/run").json()["data"]
     assert direct["status"] == "PASSED"
+    assert direct["trigger_source"] == "ON_DEMAND"
     current = client.post(f"/api/runs/{direct['id']}/rerun", json={"mode": "current"}).json()["data"]
     snapshot = client.post(f"/api/runs/{direct['id']}/rerun", json={"mode": "snapshot"}).json()["data"]
     assert current["status"] == snapshot["status"] == "PASSED"

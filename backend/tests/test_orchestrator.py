@@ -1,5 +1,6 @@
 from pathlib import Path
 import base64
+from enum import Enum
 
 import pytest
 
@@ -71,6 +72,19 @@ async def test_all_operational_triggers_execute_saved_script_without_generation(
     assert runner.scripts == ["print('saved')"]
     assert agents.generation_calls == 0
     assert agents.repair_calls == []
+
+
+@pytest.mark.asyncio
+async def test_trigger_value_is_stable_across_module_import_identities(domain):
+    database, _, journey = domain
+
+    class AlternateTrigger(str, Enum):
+        ON_DEMAND = "ON_DEMAND"
+
+    run = await RunOrchestrator(database, FakeRunner([passing()]), FakeAgents(), 30).run_journey(
+        journey["id"], AlternateTrigger.ON_DEMAND
+    )
+    assert run["trigger_source"] == "ON_DEMAND"
 
 
 @pytest.mark.asyncio

@@ -39,7 +39,7 @@ Safe defaults are tracked in `config/application.json`. Deployment environment v
 
 Back up the database and key file together. If the key is lost or changed, existing credentials cannot be decrypted and must be replaced. Never commit the key or expose it through a `NEXT_PUBLIC_*` variable. Logs, text evidence, and repair packets redact known credentials and recognizable payment details; screenshots and videos blur common credential and payment input fields. Review evidence before sharing because arbitrary page content may still contain sensitive data.
 
-For a remote backend, set `PLAYWRIGHT_CDP_ENDPOINT` to an authenticated private `ws://` or `wss://` Chrome DevTools endpoint. A headed run otherwise opens Chromium on the server, not the presenter's laptop. Never publish a raw browser debugging port.
+For a remote backend, ask the operator to configure hosted browser location and pair the local companion as described in the README. The companion connects outbound over HTTPS/WebSockets, keeps its credential in a private file, and asks you to approve each visible browser session. **Watch in browser** is disabled when no compatible browser is online. A disconnected or unapproved session becomes **Needs attention**; it never silently switches to server headless. `PLAYWRIGHT_CDP_ENDPOINT` remains an advanced private browser-service option. Never publish a raw browser debugging port.
 
 ## Connection failures
 
