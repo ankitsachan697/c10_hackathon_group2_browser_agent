@@ -1,0 +1,6 @@
+<svg width="40" height="40" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Outskill">
+  <defs><linearGradient id="mark" x1="2" y1="3" x2="38" y2="38" gradientUnits="userSpaceOnUse"><stop stop-color="#8B9AFF"/><stop offset="1" stop-color="#5B5CEB"/></linearGradient></defs>
+  <rect x="1" y="1" width="38" height="38" rx="11" fill="url(#mark)"/>
+  <path d="M12 13.5L20 9L28 13.5V22.5L20 27L12 22.5V13.5Z" stroke="white" stroke-width="2.4" stroke-linejoin="round"/>
+  <path d="M16 17.5L20 15.2L24 17.5V22.2L20 24.5L16 22.2V17.5Z" fill="white"/>
+</svg>
