@@ -110,6 +110,8 @@ class Settings:
     runner_timeout_seconds: int | None
     playwright_cdp_endpoint: str | None
     playwright_cdp_timeout_seconds: int | None
+    runner_container_image: str | None
+    allow_unsafe_local_execution: bool
     visual_diff_threshold: float | None
     visual_tolerance_percent: float | None
     scheduler_timezone: str | None
@@ -147,6 +149,8 @@ class Settings:
             runner_timeout_seconds=_positive_int("RUNNER_TIMEOUT_SECONDS", _env_or_config("RUNNER_TIMEOUT_SECONDS", config, "runner", "timeoutSeconds")),
             playwright_cdp_endpoint=_optional_env("PLAYWRIGHT_CDP_ENDPOINT"),
             playwright_cdp_timeout_seconds=_positive_int("PLAYWRIGHT_CDP_TIMEOUT_SECONDS", _env_or_config("PLAYWRIGHT_CDP_TIMEOUT_SECONDS", config, "runner", "cdpTimeoutSeconds")),
+            runner_container_image=_env_or_config("RUNNER_CONTAINER_IMAGE", config, "runner", "containerImage"),
+            allow_unsafe_local_execution=_bool("ALLOW_UNSANDBOXED_EXECUTION", _optional_env("ALLOW_UNSANDBOXED_EXECUTION")),
             visual_diff_threshold=_fraction("VISUAL_DIFF_THRESHOLD", _env_or_config("VISUAL_DIFF_THRESHOLD", config, "visual", "diffThreshold")),
             visual_tolerance_percent=_fraction("VISUAL_TOLERANCE_PERCENT", _env_or_config("VISUAL_TOLERANCE_PERCENT", config, "visual", "tolerancePercent")),
             scheduler_timezone=_timezone(_env_or_config("SCHEDULER_TIMEZONE", config, "scheduler", "timezone")),

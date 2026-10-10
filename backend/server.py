@@ -92,6 +92,8 @@ runner = PlaywrightRunner(
     artifacts_dir=ARTIFACTS_DIR,
     cdp_endpoint=settings.playwright_cdp_endpoint,
     cdp_timeout_seconds=settings.playwright_cdp_timeout_seconds,
+    container_image=settings.runner_container_image,
+    allow_unsafe_local_execution=settings.allow_unsafe_local_execution,
 )
 domain_database = Database(settings.database_path)
 domain_database.initialize()
@@ -194,6 +196,7 @@ def health_check():
         "timestamp": time.time(),
         "runner_ready": settings.runner_timeout_seconds is not None,
         "browser_mode": "remote_cdp" if settings.playwright_cdp_endpoint else "local",
+        "runner_isolation": "container" if settings.runner_container_image else ("unsafe-local" if settings.allow_unsafe_local_execution else "unavailable"),
         "n8n_connected": n8n_client.is_configured,
         "scheduler_ready": bool(schedule_service and getattr(app.state, "scheduler_ready", False)),
         "credential_vault_ready": credential_vault is not None,

@@ -15,6 +15,7 @@ cp .env.example .env
 python3 -m venv backend/.venv
 backend/.venv/bin/pip install -r backend/requirements.txt
 backend/.venv/bin/playwright install chromium
+docker build -f backend/Dockerfile.runner -t outskill-browser-runner:local .
 npm --prefix frontend ci
 backend/.venv/bin/python -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())'
 ```

@@ -33,6 +33,7 @@ jobs:
       - run: npm ci --prefix frontend
       - run: python -m playwright install --with-deps chromium
       - run: npm --prefix frontend exec playwright install chromium
+      - run: docker build -f backend/Dockerfile.runner -t outskill-browser-runner:local .
       - name: Run live login acceptance
         env:
           CREDENTIAL_ENCRYPTION_KEY: ${{ secrets.CREDENTIAL_ENCRYPTION_KEY }}

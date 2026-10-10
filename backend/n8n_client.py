@@ -132,7 +132,7 @@ class N8nClient:
             f"When yes, read both AUTH_USERNAME and AUTH_PASSWORD from the environment. "
             f"Generate a robust Python Playwright script using sync API (sync_playwright). "
             f"Never hardcode passwords; read from os.environ.get('AUTH_PASSWORD'). "
-            f"Capture step screenshots (step_1_landing.png, step_2_credentials_filled.png, step_3_result.png) "
+            f"Never capture screenshots while credentials are present in form fields. Capture only landing and post-submit result evidence. "
             f"inside os.environ.get('ARTIFACTS_DIR', './'). "
             f"Assert any success message or heading like 'Logged In Successfully'."
         )
@@ -330,6 +330,7 @@ def run():
             {"print('[Step 2] Locating username and password inputs...')" if has_login else "print('[Step 2] Performing user actions...')"}
             
             # Resilient locator strategy with multi-selector fallback
+            page.add_style_tag(content="input[type=password], input[type=email], input[name=username], input#username, input#email, input[autocomplete=username] {{ filter: blur(10px) !important; }}")
             username_field = page.locator("input[name='username'], input[type='email'], input#email, input#username, input[autocomplete='username']").first
             if username and username_field.is_visible(timeout=5000):
                 print(f"[Step 2] Filling username field...")
@@ -339,7 +340,6 @@ def run():
             if password and password_field.is_visible(timeout=5000):
                 print(f"[Step 2] Filling password securely...")
                 password_field.fill(password)
-                page.add_style_tag(content="input[type=password], input[name=username], input[autocomplete=username] {{ filter: blur(8px) !important; }}")
 
             # Step 3: Submission & State Transition
             submit_btn = page.locator("button[type='submit'], input[type='submit'], button:has-text('Sign In'), button:has-text('Log In'), button:has-text('Submit')").first
@@ -355,7 +355,7 @@ def run():
             print(f"[Step 4] Journey reached destination successfully! Current URL: {{page.url}}")
 
         except Exception as e:
-            print(f"[ERROR] Step failed with exception: {{type(e).__name__}}: {{str(e)}}", file=sys.stderr)
+            print(f"[ERROR] Step failed: {{str(e)}}", file=sys.stderr)
             # Automatic failure diagnostic dump
             try:
                 page.screenshot(path=os.path.join(artifacts_dir, "failure_screenshot.png"))

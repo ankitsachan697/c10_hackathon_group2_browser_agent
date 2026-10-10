@@ -18,6 +18,7 @@ import asyncio
 import traceback
 import ast
 from typing import Dict, Any, List, Optional, Callable
+from pathlib import Path
 
 
 class SecretRedactor:
@@ -97,10 +98,12 @@ def validate_browser_script(script: str) -> None:
 
 
 class PlaywrightRunner:
-    def __init__(self, artifacts_dir: str, cdp_endpoint: str | None = None, cdp_timeout_seconds: int | None = None):
+    def __init__(self, artifacts_dir: str, cdp_endpoint: str | None = None, cdp_timeout_seconds: int | None = None, container_image: str | None = None, allow_unsafe_local_execution: bool = False):
         self.artifacts_dir = artifacts_dir
         self.cdp_endpoint = cdp_endpoint
         self.cdp_timeout_seconds = cdp_timeout_seconds
+        self.container_image = container_image
+        self.allow_unsafe_local_execution = allow_unsafe_local_execution
         os.makedirs(self.artifacts_dir, exist_ok=True)
 
     async def execute_script(
@@ -121,6 +124,8 @@ class PlaywrightRunner:
         run_id = execution_id or f"run_{int(time.time())}_{uuid.uuid4().hex[:6]}"
         run_dir = os.path.join(self.artifacts_dir, run_id)
         os.makedirs(run_dir, exist_ok=True)
+        if self.container_image:
+            os.chmod(run_dir, 0o777)
 
         redactor = SecretRedactor([*(secrets_to_mask or []), *(secrets or [])])
         if env_vars:
@@ -154,22 +159,21 @@ class PlaywrightRunner:
         script_path = os.path.join(run_dir, "test_script.py")
         
         # Inject standard runner helper or wrap script if needed
-        wrapped_code = self._wrap_script(script_code, run_dir, headed=headed)
+        worker_run_dir = "/work" if self.container_image else run_dir
+        wrapped_code = self._wrap_script(script_code, worker_run_dir, headed=headed)
         with open(script_path, "w", encoding="utf-8") as f:
             f.write(wrapped_code)
 
         # Prepare execution environment
-        exec_env = self._execution_environment(env_vars, run_dir)
-
-        python_bin = sys.executable
+        exec_env = self._execution_environment(env_vars, worker_run_dir)
 
         emit_log("INFO", f"⚡ Launching Chromium browser runner (headed={headed})...")
 
         start_time = time.time()
         try:
+            command = self._worker_command(script_path, run_dir, exec_env)
             proc = await asyncio.create_subprocess_exec(
-                python_bin,
-                script_path,
+                *command,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
                 env=exec_env,
@@ -299,6 +303,24 @@ class PlaywrightRunner:
         for key, value in (env_vars or {}).items():
             environment[key] = str(value)
         return environment
+
+    def _worker_command(self, script_path: str, run_dir: str, environment: Dict[str, str]) -> List[str]:
+        if self.container_image:
+            command = [
+                "docker", "run", "--rm", "--read-only", "--cap-drop=ALL",
+                "--security-opt=no-new-privileges", "--pids-limit=256", "--memory=1g", "--cpus=1",
+                "--user=65532:65532", "--tmpfs=/tmp:rw,nosuid,size=256m",
+                "--mount", f"type=bind,src={Path(run_dir).resolve()},dst=/work",
+                "--workdir=/work",
+            ]
+            for key in sorted(environment):
+                if key in {"AUTH_USERNAME", "AUTH_PASSWORD", "ARTIFACTS_DIR", "PLAYWRIGHT_CDP_ENDPOINT", "PLAYWRIGHT_CDP_TIMEOUT_SECONDS", "PYTHONUNBUFFERED"}:
+                    command.extend(["--env", key])
+            command.extend([self.container_image, "python", "/work/test_script.py"])
+            return command
+        if not self.allow_unsafe_local_execution:
+            raise UnsafeScriptError("Container runner is not configured; host execution is disabled")
+        return [sys.executable, script_path]
 
     @staticmethod
     def _extract_failed_action(stderr: str) -> str:

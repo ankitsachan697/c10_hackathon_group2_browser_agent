@@ -120,6 +120,14 @@ def test_generated_login_script_asserts_quoted_expected_text():
     )["python_script"]
 
     assert 'expected_text = "Logged In Successfully"' in script
+
+
+def test_generated_login_script_satisfies_execution_policy():
+    from backend.runner import validate_browser_script
+    script = N8nClient(Settings.from_env()).generate_flow_script(
+        "https://target.example.test", 'login and validate "Logged In Successfully"', {"has_auth": True}
+    )["python_script"]
+    validate_browser_script(script)
     assert "page.get_by_text(expected_text, exact=False).wait_for" in script
 
 

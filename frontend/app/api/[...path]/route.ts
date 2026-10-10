@@ -1,15 +1,7 @@
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
+import applicationConfig from "../../../../config/application.json";
 
 function configuredBackend(): string {
-  if (process.env.BACKEND_INTERNAL_URL) return process.env.BACKEND_INTERNAL_URL;
-  for (const candidate of [join(process.cwd(), "config/application.json"), join(process.cwd(), "../config/application.json")]) {
-    try {
-      const config = JSON.parse(readFileSync(candidate, "utf8")) as { backend: { internalUrl: string } };
-      if (config.backend?.internalUrl) return config.backend.internalUrl;
-    } catch { /* try the next deployment layout */ }
-  }
-  throw new Error("Backend internal URL is not configured");
+  return process.env.BACKEND_INTERNAL_URL ?? applicationConfig.backend.internalUrl;
 }
 
 async function proxy(request: Request, context: { params: Promise<{ path: string[] }> }) {
