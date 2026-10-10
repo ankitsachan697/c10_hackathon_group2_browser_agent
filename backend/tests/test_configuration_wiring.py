@@ -87,13 +87,14 @@ def test_n8n_generation_uses_configured_agent_and_limits(monkeypatch):
 
 def test_n8n_repair_uses_its_configured_feature_and_agent(monkeypatch):
     monkeypatch.setenv("N8N_REPAIR_AGENT_ID", "repair-agent")
+    monkeypatch.setenv("N8N_BEARER_TOKEN", "test-token")
     monkeypatch.setenv("ENABLE_N8N_REPAIR", "true")
     client = N8nClient(Settings.from_env())
     calls = []
 
     def call_n8n_agent(agent_id, prompt):
         calls.append((agent_id, prompt))
-        return {"ok": True, "response": "repair advice"}
+        return {"ok": True, "response": {"repaired_script": "print('repaired')"}}
 
     monkeypatch.setattr(client, "call_n8n_agent", call_n8n_agent)
 

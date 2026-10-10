@@ -86,3 +86,14 @@ def test_visual_agent_gets_only_bounded_safe_metrics(monkeypatch):
     assert captured[0][0] == agent.settings.n8n_visual_agent_id
     assert "private-value" not in captured[0][1]
     assert len(captured[0][1]) < 1000
+
+
+def test_repair_mcp_failure_is_not_silently_replaced(monkeypatch):
+    from backend.n8n_client import AgentError
+    agent = client(monkeypatch, token="test-token")
+    monkeypatch.setenv("ENABLE_N8N_REPAIR", "true")
+    agent.settings = Settings.from_env()
+    monkeypatch.setattr(agent, "call_n8n_agent", lambda *args: (_ for _ in ()).throw(AgentError("AGENT_UNAVAILABLE", "unreachable")))
+    with pytest.raises(AgentError) as raised:
+        agent.diagnose_and_repair("print('run')", "locator timeout")
+    assert raised.value.code == "AGENT_UNAVAILABLE"

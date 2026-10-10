@@ -230,11 +230,10 @@ class N8nClient:
         diagnosis = self._analyze_failure(error_trace or "", dom_snapshot)
         agent_response = None
         if self.settings.enable_n8n_repair:
+            if not self.is_configured:
+                raise AgentError("AGENT_NOT_CONFIGURED", "Repair agent is not authenticated on this backend")
             prompt = json.dumps(packet_data, separators=(",", ":"))
-            try:
-                agent_response = self.call_n8n_agent(self.settings.n8n_repair_agent_id, prompt)
-            except Exception:
-                agent_response = None
+            agent_response = self.call_n8n_agent(self.settings.n8n_repair_agent_id, prompt)
 
         remote_repair = None
         if isinstance(agent_response, dict):
@@ -253,16 +252,11 @@ class N8nClient:
                 remote_repair = candidate
 
         if remote_repair:
-            return remote_repair
+            return {**remote_repair, "agent_id": self.settings.n8n_repair_agent_id, "agent_source": "n8n"}
+        if self.settings.enable_n8n_repair:
+            raise AgentError("AGENT_RESPONSE_INVALID", "Repair agent did not return a valid script")
         if not self.settings.enable_local_repair:
-            return {
-                "agent_id": self.settings.n8n_repair_agent_id,
-                "agent_source": "Repair unavailable",
-                "root_cause": diagnosis["root_cause"],
-                "failure_category": diagnosis["category"],
-                "recommended_fix": diagnosis["recommendation"],
-                "diff_summary": diagnosis["diff_summary"],
-            }
+            raise AgentError("AGENT_NOT_CONFIGURED", "Repair agent is disabled and local repair is not enabled")
 
         repaired_script = self._apply_healing_patch(original_script, diagnosis)
 

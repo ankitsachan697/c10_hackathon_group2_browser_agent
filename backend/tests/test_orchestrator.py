@@ -129,6 +129,15 @@ async def test_eligible_failure_repairs_once_and_records_healed_pass(domain):
     assert [(row[0], row[1]) for row in attempts] == [(1, "FAILED"), (2, "PASSED")]
     assert run["started_at"] is not None
     assert run["finished_at"] is not None
+    events = EventStore(database).list_after("run", run["id"], 0)
+    kinds = [event["kind"] for event in events]
+    assert kinds.index("run.attempt_finished") < kinds.index("repair.started") < kinds.index("repair.finished") < kinds.index("run.retry_started")
+    assert [(event["payload"]["attempt"], event["payload"]["passed"]) for event in events if event["kind"] == "run.attempt_finished"] == [(1, False), (2, True)]
+    assert runner.calls[1]["on_action"] is not None
+    with database.connect() as connection:
+        invocations = [dict(row) for row in connection.execute("SELECT * FROM agent_invocations WHERE run_id=?", (run["id"],))]
+    assert len(invocations) == 1
+    assert invocations[0]["purpose"] == "repair" and invocations[0]["status"] == "SUCCEEDED"
 
 
 @pytest.mark.asyncio
@@ -142,6 +151,22 @@ async def test_second_failure_needs_attention_and_never_retries_again(domain):
     assert run["status"] == RunStatus.NEEDS_ATTENTION
     assert run["attempt_count"] == 2
     assert len(agents.repair_calls) == 1
+    events = EventStore(database).list_after("run", run["id"], 0)
+    assert len([event for event in events if event["kind"] == "run.retry_started"]) == 1
+
+
+@pytest.mark.asyncio
+async def test_repair_failure_is_visible_and_does_not_retry(domain):
+    database, _, journey = domain
+    runner = FakeRunner([failing()])
+    run = await RunOrchestrator(database, runner, FakeAgents(error=TimeoutError("n8n unavailable")), 30).run_journey(journey["id"], TriggerSource.ON_DEMAND)
+    events = EventStore(database).list_after("run", run["id"], 0)
+    assert run["status"] == RunStatus.NEEDS_ATTENTION
+    assert len(runner.calls) == 1
+    assert any(event["kind"] == "repair.failed" for event in events)
+    with database.connect() as connection:
+        invocation = connection.execute("SELECT status,error_code FROM agent_invocations WHERE run_id=?", (run["id"],)).fetchone()
+    assert tuple(invocation) == ("FAILED", "TimeoutError")
 
 
 @pytest.mark.asyncio

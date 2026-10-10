@@ -6,6 +6,7 @@ import asyncio
 import hashlib
 import json
 import mimetypes
+import time
 import uuid
 from dataclasses import replace
 from datetime import datetime, timezone
@@ -19,6 +20,7 @@ try:
     from .repositories import ArtifactRepository, JourneyRepository, RunRepository
     from .redaction import SensitiveDataRedactor
     from .event_store import EventStore
+    from .runner import validate_browser_script
 except ImportError:
     from database import Database
     from failure_context import build_failure_packet, classify_failure
@@ -26,6 +28,7 @@ except ImportError:
     from repositories import ArtifactRepository, JourneyRepository, RunRepository
     from redaction import SensitiveDataRedactor
     from event_store import EventStore
+    from runner import validate_browser_script
 
 
 class RunOverlapError(RuntimeError):
@@ -104,7 +107,21 @@ class RunOrchestrator:
             })
 
     def _finish(self, run_id: str, changes: dict[str, Any]) -> dict[str, Any]:
-        return self.runs.update(run_id, {**changes, "finished_at": self._now()})
+        result = self.runs.update(run_id, {**changes, "finished_at": self._now()})
+        self.events.append("run", run_id, "system", "run.finished", {
+            "status": result["status"], "attempt_count": result.get("attempt_count", 0),
+        })
+        return result
+
+    def _record_agent_invocation(self, run_id: str, agent_id: str, status: str, duration_ms: int,
+                                 error_code: str | None = None, usage: Any = None) -> None:
+        with self.database.transaction() as connection:
+            connection.execute(
+                """INSERT INTO agent_invocations(id,run_id,agent_id,purpose,status,duration_ms,usage_json,error_code,created_at)
+                   VALUES (?,?,?,?,?,?,?,?,?)""",
+                (f"inv_{uuid.uuid4().hex}", run_id, agent_id, "repair", status, duration_ms,
+                 json.dumps(usage) if isinstance(usage, dict) else None, error_code, self._now()),
+            )
 
     async def _claim(self, scope: str) -> None:
         async with self._guard:
@@ -190,40 +207,67 @@ class RunOrchestrator:
 
             decision = classify_failure(first)
             if not decision.eligible:
+                emit("system", "repair.skipped", {"category": decision.category, "reason": decision.reason})
                 return self._finish(run["id"], {
                     "status": RunStatus.NEEDS_ATTENTION.value,
                     "attempt_count": 1,
                     "final_decision": decision.reason,
                 })
 
-            packet = replace(build_failure_packet(first, secrets=execution_secrets), original_script=script)
+            packet = replace(
+                build_failure_packet(first, secrets=execution_secrets),
+                original_script=SensitiveDataRedactor(execution_secrets).redact(script)[:12000],
+            )
             self.runs.update(run["id"], {"status": RunStatus.DIAGNOSING.value})
+            configured_agent_id = str(getattr(getattr(self.agents, "settings", None), "n8n_repair_agent_id", None) or "repair-agent")
+            emit("agent", "repair.started", {"agent_id": configured_agent_id, "category": decision.category})
+            repair_started = time.monotonic()
             try:
-                repair = self.agents.diagnose_and_repair(packet)
+                repair = await asyncio.to_thread(self.agents.diagnose_and_repair, packet)
             except Exception as error:
+                error_code = str(getattr(error, "code", type(error).__name__))
+                self._record_agent_invocation(run["id"], configured_agent_id, "FAILED", int((time.monotonic() - repair_started) * 1000), error_code)
+                emit("agent", "repair.failed", {"agent_id": configured_agent_id, "category": decision.category, "error_code": error_code})
                 return self._finish(run["id"], {
                     "status": RunStatus.NEEDS_ATTENTION.value,
                     "attempt_count": 1,
                     "final_decision": f"Repair service unavailable: {type(error).__name__}",
                 })
             if not isinstance(repair, dict) or not isinstance(repair.get("repaired_script"), str) or not repair["repaired_script"].strip():
+                self._record_agent_invocation(run["id"], configured_agent_id, "FAILED", int((time.monotonic() - repair_started) * 1000), "AGENT_RESPONSE_INVALID")
+                emit("agent", "repair.failed", {"agent_id": configured_agent_id, "category": decision.category, "error_code": "AGENT_RESPONSE_INVALID"})
                 return self._finish(run["id"], {
                     "status": RunStatus.NEEDS_ATTENTION.value,
                     "attempt_count": 1,
                     "final_decision": "Repair response was invalid",
                 })
+            try:
+                validate_browser_script(repair["repaired_script"])
+            except (ValueError, SyntaxError):
+                self._record_agent_invocation(run["id"], configured_agent_id, "FAILED", int((time.monotonic() - repair_started) * 1000), "UNSAFE_REPAIR_SCRIPT")
+                emit("agent", "repair.failed", {"agent_id": configured_agent_id, "category": decision.category, "error_code": "UNSAFE_REPAIR_SCRIPT"})
+                return self._finish(run["id"], {"status": RunStatus.NEEDS_ATTENTION.value, "attempt_count": 1, "final_decision": "Repair script did not pass validation"})
+
+            agent_id = str(repair.get("agent_id") or configured_agent_id)
+            self._record_agent_invocation(run["id"], agent_id, "SUCCEEDED", int((time.monotonic() - repair_started) * 1000), usage=repair.get("usage"))
+            emit("agent", "repair.finished", {"agent_id": agent_id, "category": decision.category,
+                                                "source": str(repair.get("agent_source") or "n8n")[:120]})
 
             self.runs.update(run["id"], {
                 "status": RunStatus.RETRYING.value,
-                "diagnosis_json": json.dumps({key: value for key, value in repair.items() if key != "repaired_script"}),
+                "diagnosis_json": SensitiveDataRedactor(execution_secrets).redact(json.dumps({key: value for key, value in repair.items() if key != "repaired_script"})),
                 "repair_patch": repair["repaired_script"],
             })
+            emit("system", "run.retry_started", {"attempt": 2})
+            def on_retry_action(action: dict[str, Any]) -> None:
+                emit("playwright", f"action.{action['phase']}", {"action": action["action"], "attempt": 2})
             try:
                 second = await self.runner.execute_script(
                     script_code=repair["repaired_script"], timeout_seconds=self.timeout_seconds,
                     execution_id=f"{run['id']}/attempt-2",
                     env_vars=env_vars, secrets=execution_secrets,
                     headed=headed,
+                    on_log=on_log, on_action=on_retry_action,
                 )
             except Exception as error:
                 return self._finish(run["id"], {
@@ -232,6 +276,7 @@ class RunOrchestrator:
                     "final_decision": f"Repair retry worker failed: {type(error).__name__}",
                 })
             self._record_attempt(run["id"], 2, second, execution_secrets)
+            emit("system", "run.attempt_finished", {"attempt": 2, "passed": bool(second.get("passed"))})
             return self._finish(run["id"], {
                 "status": (RunStatus.PASSED_AFTER_REPAIR.value if second.get("passed") else RunStatus.NEEDS_ATTENTION.value),
                 "attempt_count": 2,
