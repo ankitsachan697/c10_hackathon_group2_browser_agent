@@ -27,6 +27,10 @@ async function proxy(request: Request, context: { params: Promise<{ path: string
   const target = `${backend}/api/${path.join("/")}${incoming.search}`;
   const headers = new Headers(request.headers);
   headers.delete("host");
+  // Vercel browser authentication stays at this gateway, not the controller.
+  headers.delete("cookie");
+  headers.delete("content-length");
+  headers.set("accept-encoding", "identity");
   headers.delete("x-studio-control");
   if (cloud) {
     headers.set("x-studio-control", cloud.controlSecret);
@@ -37,7 +41,12 @@ async function proxy(request: Request, context: { params: Promise<{ path: string
   }
   const body = ["GET", "HEAD"].includes(request.method) ? undefined : await request.arrayBuffer();
   const response = await fetch(target, { method: request.method, headers, body, cache: "no-store", redirect: "manual" });
-  return new Response(response.body, { status: response.status, headers: response.headers });
+  // Node fetch decodes upstream compression. Retaining its original encoding
+  // or byte count makes browsers try to decompress an already decoded body.
+  const responseHeaders = new Headers(response.headers);
+  for (const name of ["content-encoding", "content-length", "transfer-encoding", "connection"]) responseHeaders.delete(name);
+  responseHeaders.set("cache-control", "private, no-store");
+  return new Response(response.body, { status: response.status, headers: responseHeaders });
 }
 
 export const GET = proxy;
