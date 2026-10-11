@@ -13,6 +13,7 @@ BACKEND_MODULES = (
     "scheduler", "test_suite_manager", "legacy_import", "generation", "orchestrator",
     "page_controls", "failure_context", "event_store", "redaction", "visual_diff",
     "visual_review", "companion_registry", "cdp_relay",
+    "cloud_policy", "cloud_auth", "cloud_lifecycle",
 )
 API_MODULES = (
     "__init__", "context", "system", "projects", "journeys", "runs", "schedules",

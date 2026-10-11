@@ -5,6 +5,18 @@
   "backend": {
     "internalUrl": "http://127.0.0.1:8000"
   },
+  "cloud": {
+    "teamId": "team_vX4hl0qHhzt1aKFxd5wVJ7bU",
+    "teamSlug": "testing-group1",
+    "projectId": "prj_AKsTYfYD7rX5t29TUCn440Yr6Dsq",
+    "projectName": "outskill-group2-browser-studio",
+    "controllerImage": "vercel/sandbox/universal@sha256:c77f7436b9bc0a8b01ef7b09dbcea2de6a18a9fe2aafa89996d2da193da72cf0",
+    "sessionMinutes": 40,
+    "jobMinutes": 10,
+    "artifactLimitMiB": 500,
+    "metadataLimitMiB": 50,
+    "dailyUtcHour": 1
+  },
   "runner": {
     "timeoutSeconds": 60,
     "cdpTimeoutSeconds": 30,

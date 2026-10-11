@@ -45,3 +45,4 @@ test_*_dir/
 # Generated cloud runtime and Vercel account linkage
 .cloud-runtime/
 .vercel/
+frontend/cloud-runtime/

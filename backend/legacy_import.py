@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -47,6 +48,8 @@ def _mark(database: Database, source: str, legacy_id: str, imported_id: str) -> 
 def import_legacy_json(database: Database, cases_path: str | Path, runs_path: str | Path) -> ImportSummary:
     database.initialize()
     summary = ImportSummary()
+    if os.getenv("CLOUD_MODE", "false").lower() == "true":
+        return summary
     projects, journeys, runs_repo = ProjectRepository(database), JourneyRepository(database), RunRepository(database)
 
     for index, case in enumerate(_read(cases_path, summary)):

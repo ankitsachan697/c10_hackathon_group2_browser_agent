@@ -139,6 +139,16 @@ class Settings:
     def from_env(cls, config_path: Path | None = None) -> "Settings":
         config = load_application_config(config_path)
         artifacts_root = _path_from_env("ARTIFACTS_ROOT", PROJECT_ROOT / "artifacts")
+        if os.getenv("CLOUD_MODE", "false").lower() == "true":
+            try:
+                from .cloud_policy import CloudPolicy
+            except ImportError:
+                from cloud_policy import CloudPolicy
+            cloud = CloudPolicy.from_env()
+            artifacts_root = cloud.state_root / "artifacts"
+            database_path = cloud.state_root / "browser_automation.db"
+        else:
+            database_path = _path_from_env("DATABASE_PATH", PROJECT_ROOT / "data" / "browser_automation.db")
         cors_origins = tuple(
             origin.strip()
             for origin in os.getenv("CORS_ORIGINS", "").split(",")
@@ -148,7 +158,7 @@ class Settings:
         if browser_location not in {"local", "hosted"}:
             raise ValueError("RUNNER_BROWSER_LOCATION must be local or hosted")
         return cls(
-            database_path=_path_from_env("DATABASE_PATH", PROJECT_ROOT / "data" / "browser_automation.db"),
+            database_path=database_path,
             artifacts_root=artifacts_root,
             artifact_trash_root=_path_from_env("ARTIFACT_TRASH_ROOT", artifacts_root / ".trash"),
             product_name=_env_or_config("PRODUCT_NAME", config, "product", "name"),

@@ -25,7 +25,9 @@ except ImportError:
     from legacy_import import import_legacy_json
 
 
-DEFAULT_SUITES_DIR = Path(__file__).resolve().parent / "test_suites"
+DEFAULT_SUITES_DIR = (Path(os.environ["CLOUD_STATE_ROOT"]) / "legacy-disabled"
+                     if os.getenv("CLOUD_MODE", "false").lower() == "true"
+                     else Path(__file__).resolve().parent / "test_suites")
 
 
 def _get_slug(url: str, name: str = "") -> str:

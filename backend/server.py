@@ -34,6 +34,8 @@ from pydantic import BaseModel
 # Add current dir to sys.path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from config import Settings
+from cloud_policy import CloudPolicy
+from cloud_auth import CloudAuthMiddleware
 from runner import PlaywrightRunner
 from visual_diff import compare_images
 from visual_review import VisualReview
@@ -57,6 +59,7 @@ except ImportError:
     from api.context import AppServices
 
 settings = Settings.from_env()
+cloud_policy = CloudPolicy.from_env()
 n8n_client = N8nClient(settings)
 schedule_service = None
 
@@ -65,9 +68,9 @@ schedule_service = None
 async def lifespan(application: FastAPI):
     if application.state.services.orchestrator:
         application.state.services.orchestrator.recover_interrupted()
-    if application.state.services.generation:
+    if application.state.services.generation and not cloud_policy.enabled:
         application.state.services.generation.recover()
-    if schedule_service:
+    if schedule_service and not cloud_policy.enabled:
         schedule_service.start()
         application.state.scheduler_ready = True
     else:
@@ -85,6 +88,7 @@ app = FastAPI(
     version="1.0.0",
     lifespan=lifespan,
 )
+app.add_middleware(CloudAuthMiddleware, policy=cloud_policy)
 
 app.add_middleware(
     CORSMiddleware,
@@ -209,12 +213,15 @@ def health_check():
     return {
         "status": "healthy",
         "timestamp": time.time(),
-        "runner_ready": settings.runner_timeout_seconds is not None,
+        "runner_ready": settings.runner_timeout_seconds is not None and not cloud_policy.enabled,
         "browser_mode": "remote_cdp" if settings.playwright_cdp_endpoint else "local",
-        "runner_isolation": "container" if settings.runner_container_image else ("unsafe-local" if settings.allow_unsafe_local_execution else "unavailable"),
+        "runner_isolation": "pending-cloud-worker" if cloud_policy.enabled else ("container" if settings.runner_container_image else ("unsafe-local" if settings.allow_unsafe_local_execution else "unavailable")),
         "n8n_connected": n8n_client.is_configured,
         "scheduler_ready": bool(schedule_service and getattr(app.state, "scheduler_ready", False)),
         "credential_vault_ready": credential_vault is not None,
+        "source_revision": cloud_policy.source_revision if cloud_policy.enabled else None,
+        "cloud_mode": cloud_policy.enabled,
+        "deployment_phase": "studio-and-api" if cloud_policy.enabled else "local",
     }
 
 
