@@ -1,0 +1,73 @@
+name: Deploy Studio to Vercel
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: group2-vercel-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: github.ref == 'refs/heads/demo_master'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Validate deployment boundaries
+        run: node --test scripts/tests/deploy_vercel.test.mjs
+      - name: Build allowlisted Python runtime
+        run: python scripts/package_cloud_runtime.py --output-dir frontend/cloud-runtime
+      - name: Configure private server credentials on the approved Hobby project
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          N8N_BEARER_TOKEN: ${{ secrets.N8N_BEARER_TOKEN }}
+        run: node scripts/deploy_vercel.mjs
+      - name: Stage deployment without local history or credentials
+        id: stage
+        run: |
+          staging_path=$(node scripts/deploy_vercel.mjs --stage-only)
+          printf 'path=%s\n' "$staging_path" >> "$GITHUB_OUTPUT"
+      - name: Deploy protected preview
+        id: preview
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          npx --yes vercel@63.1.2 deploy "${{ steps.stage.outputs.path }}" --yes --scope testing-group1 > "$RUNNER_TEMP/preview-url.txt"
+          preview_url=$(tail -n 1 "$RUNNER_TEMP/preview-url.txt")
+          printf 'url=%s\n' "$preview_url" >> "$GITHUB_OUTPUT"
+      - name: Verify preview Python API before production deployment
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          cd "${{ steps.stage.outputs.path }}"
+          npx --yes vercel@63.1.2 curl /api/health --deployment "${{ steps.preview.outputs.url }}" --scope testing-group1 -- --silent --show-error --fail --max-time 240 > "$RUNNER_TEMP/preview-health.json"
+          node -e 'const h=require(process.env.RUNNER_TEMP+"/preview-health.json"); if(h.status!=="healthy" || !h.cloud_mode || !h.credential_vault_ready || h.source_revision!==process.env.GITHUB_SHA) process.exit(1); console.log("Protected preview Python API verified");'
+      - name: Deploy production
+        id: deploy
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          npx --yes vercel@63.1.2 deploy "${{ steps.stage.outputs.path }}" --prod --yes --scope testing-group1 > "$RUNNER_TEMP/deployment-url.txt"
+          deployment_url=$(tail -n 1 "$RUNNER_TEMP/deployment-url.txt")
+          printf 'url=%s\n' "$deployment_url" >> "$GITHUB_OUTPUT"
+          printf '### Group2 deployment\n\nStudio: %s\n\nInitial release: frontend and persistent Python API. Remote browser jobs remain disabled until isolated workers are ready.\n' "$deployment_url" >> "$GITHUB_STEP_SUMMARY"
+      - name: Verify production Python API
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          cd "${{ steps.stage.outputs.path }}"
+          npx --yes vercel@63.1.2 curl /api/health --deployment "${{ steps.deploy.outputs.url }}" --scope testing-group1 -- --silent --show-error --fail --max-time 240 > "$RUNNER_TEMP/production-health.json"
+          node -e 'const h=require(process.env.RUNNER_TEMP+"/production-health.json"); if(h.status!=="healthy" || !h.cloud_mode || !h.credential_vault_ready || h.source_revision!==process.env.GITHUB_SHA) process.exit(1); console.log("Protected production Python API verified");'
