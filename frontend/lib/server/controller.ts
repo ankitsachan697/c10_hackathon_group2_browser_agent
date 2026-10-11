@@ -50,17 +50,18 @@ async function bootstrapController(settings: CloudSettings): Promise<ControllerH
     throw new Error("Scoped Vercel credentials are expired or lack the required job budget");
   }
   const credentials = { token, teamId: settings.teamId, projectId: settings.projectId };
+  const controllerHosts = ["pypi.org", "files.pythonhosted.org", "api.vercel.com", "vercel.com", "outskilltraining.app.n8n.cloud", new URL(settings.dnsResolverUrl).hostname];
   const sandbox = await getPersistentController({
     ...credentials, name: settings.controllerName,
     image: settings.image, persistent: true, snapshotExpiration: 0,
     keepLastSnapshots: { count: 1, expiration: 0, deleteEvicted: true },
     resources: { vcpus: 1 }, ports: [8000], timeout: settings.sessionMinutes * 60_000,
     // Trusted controller installs dependencies and calls n8n/Vercel only.
-    networkPolicy: { allow: ["pypi.org", "files.pythonhosted.org", "api.vercel.com", "vercel.com", "outskilltraining.app.n8n.cloud"] },
+    networkPolicy: { allow: controllerHosts },
   });
   if (!sandbox.persistent || sandbox.snapshotExpiration !== 0) throw new Error("Controller persistence policy differs from the approved policy");
   // Restoring an existing controller does not reapply create options.
-  await sandbox.updateNetworkPolicy({ allow: ["pypi.org", "files.pythonhosted.org", "api.vercel.com", "vercel.com", "outskilltraining.app.n8n.cloud"] });
+  await sandbox.updateNetworkPolicy({ allow: controllerHosts });
   const origin = sandbox.domain(8000);
   const archive = await readFile(settings.runtimePath);
   const hash = createHash("sha256").update(archive).digest("hex");
@@ -92,6 +93,7 @@ async function bootstrapController(settings: CloudSettings): Promise<ControllerH
     CLOUD_CONTROLLER_ORIGIN: origin, CLOUD_SESSION_EXPIRES_AT: sandbox.expiresAt?.toISOString() ?? "",
     CLOUD_SESSION_ID: sandbox.currentSession().sessionId,
     CLOUD_WORKER_IMAGE: settings.image, RUNNER_BROWSER_LOCATION: "hosted", RUNNER_RELAY_BASE_URL: origin,
+    CLOUD_DNS_RESOLVER_URL: settings.dnsResolverUrl,
   }, timeoutMs: 180_000 });
   if (boot.exitCode !== 0) throw new Error("Controller startup failed; configuration or free quota needs attention");
   const ready = JSON.parse(await boot.stdout());

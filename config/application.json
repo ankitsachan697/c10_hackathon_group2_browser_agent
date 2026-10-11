@@ -12,6 +12,7 @@
     "projectName": "outskill-group2-browser-studio",
     "controllerImage": "vercel/sandbox/universal@sha256:c77f7436b9bc0a8b01ef7b09dbcea2de6a18a9fe2aafa89996d2da193da72cf0",
     "sessionMinutes": 40,
+    "dnsResolverUrl": "https://dns.google/resolve",
     "jobMinutes": 10,
     "artifactLimitMiB": 500,
     "metadataLimitMiB": 50,

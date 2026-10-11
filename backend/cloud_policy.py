@@ -19,6 +19,7 @@ class CloudPolicy:
     media_secret: str = field(repr=False)
     source_revision: str = ""
     origin: str = ""
+    dns_resolver_url: str = ""
 
     @classmethod
     def from_env(cls) -> "CloudPolicy":
@@ -37,7 +38,7 @@ class CloudPolicy:
                 raise ValueError("CLOUD_STATE_ROOT is required")
         return cls(enabled, Path(os.getenv("CLOUD_STATE_ROOT", "/vercel/sandbox/state")).resolve(),
                    team, project, control, media, os.getenv("CLOUD_SOURCE_REVISION", ""),
-                   os.getenv("CLOUD_CONTROLLER_ORIGIN", ""))
+                   os.getenv("CLOUD_CONTROLLER_ORIGIN", ""), os.getenv("CLOUD_DNS_RESOLVER_URL", ""))
 
     def sdk_credentials(self, minimum_lifetime: int = 0) -> dict:
         """Read privately refreshed SDK credentials; never expose them to a worker."""

@@ -6,6 +6,7 @@ export type CloudSettings = {
   controllerName: string; image: string; sessionMinutes: number; sourceRevision: string;
   runtimePath: string; controlSecret: string; mediaSecret: string;
   companionToken: string; n8nToken: string;
+  dnsResolverUrl: string;
 };
 
 export function loadCloudSettings(env: Record<string, string | undefined> = process.env): CloudSettings | null {
@@ -30,5 +31,6 @@ export function loadCloudSettings(env: Record<string, string | undefined> = proc
     runtimePath: path.resolve(process.cwd(), "cloud-runtime/group2-runtime.tar.gz"),
     controlSecret: env.CLOUD_CONTROL_SECRET!, mediaSecret: env.CLOUD_MEDIA_SECRET!,
     companionToken: env.COMPANION_ADMIN_TOKEN!, n8nToken: env.N8N_BEARER_TOKEN ?? "",
+    dnsResolverUrl: config.dnsResolverUrl,
   };
 }

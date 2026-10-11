@@ -7,12 +7,13 @@ import json
 import os
 import re
 import socket
+import urllib.request
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
-from urllib.parse import urlsplit
+from urllib.parse import urlsplit, urlencode
 
 PUBLIC_DEMO = re.compile(r"^/api/demo-shop/[A-Za-z0-9_-]{1,100}(?:/(?:shop\.css|shop\.js))?$")
-PRIVATE_SUBNETS = ["0.0.0.0/8", "10.0.0.0/8", "100.64.0.0/10", "127.0.0.0/8", "169.254.0.0/16", "172.16.0.0/12", "192.0.0.0/24", "192.168.0.0/16", "198.18.0.0/15", "224.0.0.0/4", "240.0.0.0/4"]
+PRIVATE_SUBNETS = ["0.0.0.0/8", "10.0.0.0/8", "100.64.0.0/10", "127.0.0.0/8", "169.254.0.0/16", "172.16.0.0/12", "192.0.0.0/24", "192.0.2.0/24", "192.88.99.0/24", "192.168.0.0/16", "198.18.0.0/15", "198.51.100.0/24", "203.0.113.0/24", "224.0.0.0/4", "240.0.0.0/4"]
 INSTALL_HOSTS = ["pypi.org", "files.pythonhosted.org", "cdn.playwright.dev", "playwright.download.prss.microsoft.com", "cdn.playwright.azureedge.net", "storage.googleapis.com", "archive.ubuntu.com", "security.ubuntu.com", "ports.ubuntu.com", "cli.github.com"]
 WORK = "/vercel/sandbox/work"
 MAX_FILE = 50 * 1024 * 1024
@@ -29,27 +30,67 @@ def origin(url: str) -> str:
     return f"{parts.scheme}://{parts.hostname.lower()}"
 
 
-def validate_public_target(url: str, allowed_origins: set[str]) -> str:
+class _NoDNSRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, request, response, code, message, headers, url):
+        return None
+
+
+def dns_urlopen(url: str, timeout: int):
+    return urllib.request.build_opener(_NoDNSRedirect()).open(url, timeout=timeout)
+
+
+def resolve_public_dns(host: str, endpoint: str) -> list[str]:
+    """Resolve through one trusted HTTPS service, without opening target egress.
+
+    Domain-scoped controller firewalls intentionally deny arbitrary DNS names.
+    The resolver receives only the hostname, never URLs, credentials or secrets.
+    """
+    parts = urlsplit(endpoint)
+    if parts.scheme != "https" or not parts.hostname or parts.username or parts.password or parts.query or parts.fragment or parts.port not in (None, 443):
+        raise ValueError("A fixed HTTPS DNS resolver endpoint is required")
+    try:
+        return [str(ipaddress.ip_address(host))]
+    except ValueError:
+        pass
+    addresses = []
+    for record_type in (1, 28):
+        query = urlencode({"name": host, "type": record_type})
+        with dns_urlopen(endpoint + "?" + query, timeout=5) as response:
+            body = response.read(65537)
+        if len(body) > 65536:
+            raise ValueError("Public DNS response exceeds its size limit")
+        value = json.loads(body)
+        questions = value.get("Question", [])
+        if value.get("Status") != 0 or value.get("TC", False) or len(questions) != 1 or questions[0].get("name", "").rstrip(".").lower() != host.lower() or questions[0].get("type") != record_type:
+            raise ValueError("Public target DNS could not be verified")
+        answers = value.get("Answer", [])
+        if len(answers) > 128:
+            raise ValueError("Public DNS response exceeds its answer limit")
+        addresses.extend(str(answer["data"]) for answer in answers if answer.get("type") in (1, 28))
+    return addresses
+
+
+def validate_public_target(url: str, allowed_origins: set[str], resolver=None) -> str:
     authority = origin(url)
     if authority not in allowed_origins:
         raise ValueError("Navigation origin is not approved")
     host = urlsplit(url).hostname
     try:
-        addresses = [entry[4][0] for entry in socket.getaddrinfo(host, 443, type=socket.SOCK_STREAM)]
-        if not addresses or any(not ipaddress.ip_address(ip).is_global for ip in addresses):
+        addresses = resolver(host) if resolver else [entry[4][0] for entry in socket.getaddrinfo(host, 443, type=socket.SOCK_STREAM)]
+        ips = [ipaddress.ip_address(ip) for ip in addresses]
+        if not ips or any(not ip.is_global or ip.is_multicast or ip in ipaddress.ip_network("192.88.99.0/24") for ip in ips):
             raise ValueError("Cloud targets must resolve only to public addresses")
     except OSError as error:
         raise ValueError("Public target DNS could not be verified") from error
     return url
 
 
-def execution_network_policy(target: str, controller_origin: str = "", dependencies: tuple[str, ...] = ()) -> dict:
+def execution_network_policy(target: str, controller_origin: str = "", dependencies: tuple[str, ...] = (), resolver=None) -> dict:
     target_origin = origin(target)
-    validate_public_target(target, {target_origin})
     allow = {}
     for value in (target_origin, *dependencies):
         value_origin = origin(value)
-        validate_public_target(value, {value_origin})
+        validate_public_target(value, {value_origin}, resolver=resolver)
         host = urlsplit(value).hostname
         if controller_origin and value_origin == origin(controller_origin):
             if value_origin == target_origin and not PUBLIC_DEMO.fullmatch(urlsplit(target).path):
@@ -204,7 +245,10 @@ class SandboxTransport:
             raise ValueError("Cloud job has insufficient remaining browser budget")
         timeout_seconds = min(timeout_seconds, budget)
         credentials = self.policy.sdk_credentials(minimum_lifetime=budget)
-        network = self._network(execution_network_policy(target_url, self.policy.origin, self.dependencies))
+        endpoint = getattr(self.policy, "dns_resolver_url", "")
+        resolver = (lambda host: resolve_public_dns(host, endpoint)) if endpoint else None
+        document = await asyncio.to_thread(execution_network_policy, target_url, self.policy.origin, self.dependencies, resolver=resolver)
+        network = self._network(document)
 
         async def resolve():
             return SandboxCredentials(**credentials)
