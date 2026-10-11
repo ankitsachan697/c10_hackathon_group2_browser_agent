@@ -7,6 +7,7 @@ Supports:
 3. Visual Regression Monitor Agent
 """
 
+import ast
 import os
 import re
 import json
@@ -27,6 +28,29 @@ class AgentError(RuntimeError):
     def __init__(self, code: str, message: str):
         self.code = code
         super().__init__(message)
+
+
+def _normalize_text_waits(script: str) -> str:
+    """Translate the common invented text-wait API without changing the assertion text."""
+    if "wait_for_text" not in script:
+        return script
+    try:
+        tree = ast.parse(script)
+    except SyntaxError as error:
+        raise AgentError("AGENT_RESPONSE_INVALID", "Discovery agent returned invalid Python") from error
+    changed = False
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Attribute) or node.func.attr != "wait_for_text":
+            continue
+        if len(node.args) != 1 or any(keyword.arg != "timeout" for keyword in node.keywords):
+            raise AgentError("AGENT_RESPONSE_INVALID", "Discovery agent returned an unsupported text wait")
+        locator = ast.Call(func=ast.Attribute(value=node.func.value, attr="get_by_text", ctx=ast.Load()),
+                           args=node.args, keywords=[ast.keyword(arg="exact", value=ast.Constant(True))])
+        node.func = ast.Attribute(value=locator, attr="wait_for", ctx=ast.Load())
+        node.args = []
+        node.keywords.insert(0, ast.keyword(arg="state", value=ast.Constant("visible")))
+        changed = True
+    return ast.unparse(ast.fix_missing_locations(tree)) if changed else script
 
 
 class N8nClient:
@@ -172,6 +196,10 @@ class N8nClient:
             f"Never capture screenshots while credentials are present in form fields. Capture only landing and post-submit result evidence. "
             f"Write evidence inside os.environ.get('ARTIFACTS_DIR', './'). "
             f"Assert the outcome specified in the objective. "
+            f"For text assertions use expect(page.get_by_text(expected_text, exact=True)).to_be_visible() "
+            f"or page.get_by_text(expected_text, exact=True).wait_for(state='visible'). "
+            f"There is no page.wait_for_text method. Import expect from playwright.sync_api when using assertions. "
+            f"Capture a post-assertion screenshot with page.screenshot(path=os.path.join(os.environ['ARTIFACTS_DIR'], 'result.png')). "
             f"Return only a JSON object with discovered_steps (array of strings) and python_script (string). "
             f"Do not include Markdown fences or explanatory text outside the JSON object."
         )
@@ -195,7 +223,7 @@ class N8nClient:
         if not isinstance(script, str) or not 0 < len(script) <= 50_000 or not isinstance(steps, list):
             raise AgentError("AGENT_RESPONSE_INVALID", "Discovery agent did not return a valid script")
         response = {
-            "python_script": script,
+            "python_script": _normalize_text_waits(script),
             "discovered_steps": [str(step)[:500] for step in steps[:50]],
             "agent_id": self.settings.n8n_discovery_agent_id,
             "agent_source": f"n8n Cloud Agent (ID: {self.settings.n8n_discovery_agent_id})",

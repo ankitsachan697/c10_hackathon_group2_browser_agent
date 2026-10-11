@@ -24,7 +24,6 @@ export function JourneyForm() {
   const [url, setUrl] = useState("");
   const [objective, setObjective] = useState("");
   const [username, setUsername] = useState("");
-  const [password, setPassword] = useState("");
   const passwordRef = useRef<HTMLInputElement>(null);
   const [showPassword, setShowPassword] = useState(false);
   const [mode, setMode] = useState<"headless" | "headed">("headless");
@@ -37,6 +36,7 @@ export function JourneyForm() {
   const submitKey = useRef<string | null>(null);
   const operationId = operation?.id;
   const operationStatus = operation?.status;
+  const operationActive = Boolean(operation && !["FAILED", "COMPLETED"].includes(operation.status));
   const runId = operation?.run_id ?? undefined;
   const runTerminal = ["PASSED", "PASSED_AFTER_REPAIR", "NEEDS_ATTENTION", "FAILED"].includes(run?.status ?? "");
   const operationFeed = useActivityEvents("operation", operationId, operationStatus === "FAILED" || operationStatus === "COMPLETED");
@@ -92,7 +92,12 @@ export function JourneyForm() {
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
-    if (busy || operation || !projectId || !name.trim() || !url.trim() || !objective.trim()) return;
+    if (busy || operationActive || !projectId || !name.trim() || !url.trim() || !objective.trim()) return;
+    const enteredPassword = passwordRef.current?.value ?? "";
+    if (Boolean(username) !== Boolean(enteredPassword)) {
+      setError("Supply both username and password, or leave both empty.");
+      return;
+    }
     setBusy(true); setError("");
     const key = submitKey.current ?? crypto.randomUUID();
     submitKey.current = key;
@@ -100,26 +105,27 @@ export function JourneyForm() {
       const result = await api<GenerationOperation>("/api/operations/generations", {
         method: "POST", headers: { "Idempotency-Key": key },
         body: JSON.stringify({ project_id: projectId, name: name.trim(), target_url: url.trim(), objective: objective.trim(),
-          username: username || undefined, password: passwordRef.current?.value || undefined, browser_mode: mode,
+          username: username || undefined, password: enteredPassword || undefined, browser_mode: mode,
           companion_id: mode === "headed" ? companionId || undefined : undefined, offline }),
       });
       sessionStorage.setItem(operationKey, result.id);
       if (passwordRef.current) passwordRef.current.value = "";
-      setPassword("");
+      submitKey.current = null;
+      setRun(null);
       setOperation(result);
     } catch (failure) {
       setError(failure instanceof Error ? failure.message : "Journey could not be started");
     } finally { setBusy(false); }
   };
 
-  const canSubmit = Boolean(projectId && name.trim() && url.trim() && objective.trim() && Boolean(username) === Boolean(password));
+  const canSubmit = Boolean(projectId && name.trim() && url.trim() && objective.trim());
   const startAnother = () => {
     sessionStorage.removeItem(operationKey);
     submitKey.current = null;
     setOperation(null);
     setRun(null);
     if (passwordRef.current) passwordRef.current.value = "";
-    setName(""); setUrl(""); setObjective(""); setUsername(""); setPassword(""); setError("");
+    setName(""); setUrl(""); setObjective(""); setUsername(""); setError("");
   };
   return <div className="page journey-create">
     <div className="page-heading"><div><p className="eyebrow">New journey</p><h1>Describe what the browser should do</h1><p>Discovery creates a saved Playwright script, then runs it once automatically.</p></div></div>
@@ -138,22 +144,21 @@ export function JourneyForm() {
         <div className="journey-section-heading"><span>03</span><div><h2>Credentials</h2><p>Optional. These are passed to the browser worker, not the discovery agent.</p></div></div>
         <div className="form-grid">
           <label>Username<input aria-label="Username" autoComplete="username" value={username} onChange={event => setUsername(event.target.value)}/></label>
-          <label>Password<div className="password-field"><input ref={passwordRef} aria-label="Password" autoComplete="current-password" type={showPassword ? "text" : "password"} onChange={event => setPassword(event.target.value)} onBlur={event => setPassword(event.target.value)}/><button type="button" aria-label={showPassword ? "Hide password" : "Show password"} onClick={() => setShowPassword(value => !value)}>{showPassword ? <EyeOff size={16}/> : <Eye size={16}/>}</button></div></label>
-          {!operation && Boolean(username) !== Boolean(password) && <p className="full form-error">Supply both username and password, or leave both empty.</p>}
+          <label>Password<div className="password-field"><input ref={passwordRef} aria-label="Password" autoComplete="current-password" type={showPassword ? "text" : "password"}/><button type="button" aria-label={showPassword ? "Hide password" : "Show password"} onClick={() => setShowPassword(value => !value)}>{showPassword ? <EyeOff size={16}/> : <Eye size={16}/>}</button></div></label>
         </div>
         <div className="journey-section-heading"><span>04</span><div><h2>Browser mode</h2><p>Choose how the first run opens Chromium.</p></div></div>
         <CompanionPicker mode={mode} onModeChange={setMode} companionId={companionId} onCompanionChange={setCompanionId}/>
         <label className="offline-row"><input type="checkbox" checked={offline} onChange={event => setOffline(event.target.checked)}/>Use local offline script generation if n8n is unavailable</label>
         {error && <p className="form-error" role="alert">{error}</p>}
-        <div className="wizard-actions"><Button type="submit" aria-label="Verify & record live" disabled={!canSubmit || busy || Boolean(operation)}><Sparkles size={16}/>{busy ? "Starting…" : "Verify & record live"}</Button></div>
+        <div className="wizard-actions">{operationActive ? <a className="muted" href="#live-verification">A verification is running. View its progress below.</a> : !canSubmit ? <span className="muted">Choose a project and enter the objective, journey name, and target URL.</span> : null}<Button type="submit" aria-label="Verify & record live" disabled={!canSubmit || busy || operationActive}><Sparkles size={16}/>{busy ? "Starting…" : "Verify & record live"}</Button></div>
       </form>
     </Card>
-    {operation && <Card><div className="operation-heading"><div><p className="eyebrow">Live activity</p><h2>{operation.status === "FAILED" ? "Generation needs attention" : run?.status === "PASSED" || run?.status === "PASSED_AFTER_REPAIR" ? "First run passed" : run?.status === "NEEDS_ATTENTION" ? "Run needs attention" : "Discovering and running"}</h2></div><div className="run-actions">{operation.run_id && <Link className="button primary-link" href={`/runs/${operation.run_id}`}>Open run</Link>}{["FAILED", "COMPLETED"].includes(operation.status) && <Button type="button" className="button-secondary" onClick={startAnother}>Create another journey</Button>}</div></div>
+    {operation && <div id="live-verification" className="verification-session"><Card><div className="operation-heading"><p className="eyebrow">Live activity</p><div className="run-actions">{operation.run_id && <Link className="button primary-link" href={`/runs/${operation.run_id}`}>Open run</Link>}{["FAILED", "COMPLETED"].includes(operation.status) && <Button type="button" className="button-secondary" onClick={startAnother}>Create another journey</Button>}</div></div>
       {operation.error_message && <p className="form-error" role="alert">{operation.error_message}</p>}
-      <LiveRunProgress operationEvents={operationFeed.events} runEvents={runFeed.events} run={run ?? undefined}/>
+      <LiveRunProgress operationEvents={operationFeed.events} runEvents={runFeed.events} run={run ?? undefined} runStatus={operation.status === "FAILED" ? "FAILED" : undefined}/>
       {operationFeed.error && <p className="form-error" role="alert">{operationFeed.error}</p>}
       {runFeed.error && <p className="form-error" role="alert">{runFeed.error}</p>}
-    </Card>}
+    </Card></div>}
     <CreateProjectDialog open={projectDialog} onClose={() => setProjectDialog(false)} onCreated={createdProject}/>
   </div>;
 }

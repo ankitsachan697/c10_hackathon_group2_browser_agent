@@ -51,7 +51,7 @@ html, body {
 button, input, select, textarea { font-family: inherit; font-size: inherit; }
 code, pre, .font-mono, .objective-editor textarea, input[type="url"] { font-family: var(--font-mono); }
 main { padding: 24px; }
-.page { gap: 18px; }
+.page { gap: 18px; grid-template-columns: minmax(0, 1fr); }
 .page-heading h1 { font-size: 26px; line-height: 1.25; font-weight: 650; }
 .page-heading p { font-size: 13px; }
 .topbar { height: 60px; padding-inline: 24px; }
@@ -103,6 +103,10 @@ td a { color: #d7ff82; }
 .live-switch button[aria-selected="true"] { background: var(--primary); color: #111708; }
 .live-switch button:disabled { opacity: .4; cursor: not-allowed; }
 .verification-panel { min-width: 0; }
+.verification-session { min-width: 0; scroll-margin-top: 84px; }
+.journey-form .wizard-actions { align-items: center; flex-wrap: wrap; }
+.journey-form .wizard-actions > .muted { flex: 1 1 200px; }
+.journey-form .wizard-actions > .button { flex-shrink: 0; }
 .page, .card, .journey-form, .form-grid, .form-grid label, .objective-editor, .objective-editor textarea, .live-progress, .live-switch { min-width: 0; }
 .operation-heading { flex-wrap: wrap; }
 .live-step-columns { gap: 12px; }

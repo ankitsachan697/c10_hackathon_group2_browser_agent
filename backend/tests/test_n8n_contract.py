@@ -67,6 +67,21 @@ def test_standard_mcp_text_response_generates_script(monkeypatch):
     assert result["agent_source"].startswith("n8n")
 
 
+def test_generated_text_wait_uses_a_supported_playwright_locator(monkeypatch):
+    agent = client(monkeypatch, token="test-token")
+    monkeypatch.setattr(agent, "call_n8n_agent", lambda *args: {"response": {
+        "python_script": "page.wait_for_text('Welcome', timeout=1200)",
+        "discovered_steps": ["Check confirmation"],
+    }})
+    from playwright.sync_api import Page
+    from unittest.mock import Mock
+    page = Mock(spec=Page)
+    script = agent.generate_flow_script("https://example.test", "Check confirmation")["python_script"]
+    exec(script, {"page": page})
+    page.get_by_text.assert_called_once_with("Welcome", exact=True)
+    page.get_by_text.return_value.wait_for.assert_called_once_with(state="visible", timeout=1200)
+
+
 def test_discovery_accepts_json_code_fence_and_requests_structured_output(monkeypatch):
     agent = client(monkeypatch, token="test-token")
     prompts = []
