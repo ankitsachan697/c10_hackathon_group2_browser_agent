@@ -23,7 +23,7 @@ test("keeps planned discovery separate from confirmed actions across attempts", 
   expect(screen.getByText("Verify success message")).toBeInTheDocument();
   expect(screen.getByText(/Attempt 1.*fill.*failed/i)).toBeInTheDocument();
   expect(screen.getByText(/Attempt 2.*fill.*finished/i)).toBeInTheDocument();
-  expect(screen.getByText(/Needs attention/i)).toBeInTheDocument();
+  expect(screen.getByRole("heading", { name: "Needs attention" })).toBeInTheDocument();
   expect(screen.queryByText(/First run passed/i)).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole("tab", { name: "Live console" }));
   expect(screen.getByText(/password=\[REDACTED\]/)).toBeInTheDocument();

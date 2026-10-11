@@ -9,7 +9,6 @@ import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { CreateProjectDialog } from "@/components/projects/CreateProjectDialog";
 import { LiveRunProgress } from "@/components/runs/LiveRunProgress";
-import { RunResultTabs } from "@/components/runs/RunResultTabs";
 import { useActivityEvents } from "@/components/runs/useActivityEvents";
 import { CompanionPicker } from "@/components/browser/CompanionPicker";
 
@@ -151,10 +150,9 @@ export function JourneyForm() {
     </Card>
     {operation && <Card><div className="operation-heading"><div><p className="eyebrow">Live activity</p><h2>{operation.status === "FAILED" ? "Generation needs attention" : run?.status === "PASSED" || run?.status === "PASSED_AFTER_REPAIR" ? "First run passed" : run?.status === "NEEDS_ATTENTION" ? "Run needs attention" : "Discovering and running"}</h2></div><div className="run-actions">{operation.run_id && <Link className="button primary-link" href={`/runs/${operation.run_id}`}>Open run</Link>}{["FAILED", "COMPLETED"].includes(operation.status) && <Button type="button" className="button-secondary" onClick={startAnother}>Create another journey</Button>}</div></div>
       {operation.error_message && <p className="form-error" role="alert">{operation.error_message}</p>}
-      <LiveRunProgress operationEvents={operationFeed.events} runEvents={runFeed.events} runStatus={run?.status}/>
+      <LiveRunProgress operationEvents={operationFeed.events} runEvents={runFeed.events} run={run ?? undefined}/>
       {operationFeed.error && <p className="form-error" role="alert">{operationFeed.error}</p>}
       {runFeed.error && <p className="form-error" role="alert">{runFeed.error}</p>}
-      {run && <RunResultTabs run={run} runEvents={runFeed.events}/>}
     </Card>}
     <CreateProjectDialog open={projectDialog} onClose={() => setProjectDialog(false)} onCreated={createdProject}/>
   </div>;
