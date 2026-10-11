@@ -1,0 +1,55 @@
+{
+  "checked_date": "2026-10-11",
+  "studio_url": "https://outskill-group2-browser-studio.vercel.app",
+  "deployed_source_revision": "746566db2aa73d4322d8c15b6c627d6d3f2355ea",
+  "vercel_redeployment_performed": false,
+  "execution": "Real remote isolated Chromium, synthetic data, real n8n agents; no offline generation",
+  "scenario_id": "794c0a24744347a9b18737c20e8a1a30",
+  "journey_id": "jrn_425a217b602445c9b2a57f0c55b2dc5b",
+  "baseline": {
+    "run_id": "run_4b1da08498984393a638023f3f4624c1",
+    "url": "https://outskill-group2-browser-studio.vercel.app/runs/run_4b1da08498984393a638023f3f4624c1",
+    "status": "PASSED",
+    "attempt_count": 1,
+    "flow": ["registration", "login", "cart", "shipping", "synthetic checkout"],
+    "screenshots": 3,
+    "recordings": 1,
+    "discovery_agent_id": "QEzE1lGs9WbTU82H",
+    "visual_outcome": "BASELINE_CREATED",
+    "visual_agent_status": "REVIEWED"
+  },
+  "repair": {
+    "run_id": "run_d8d98201ffde439b9a65e55f94e56af2",
+    "url": "https://outskill-group2-browser-studio.vercel.app/runs/run_d8d98201ffde439b9a65e55f94e56af2",
+    "status": "PASSED_AFTER_REPAIR",
+    "attempt_count": 2,
+    "attempt_statuses": ["FAILED", "PASSED"],
+    "agent_id": "p3Sh9BmTzLMC0f8A",
+    "audit_events": ["repair.started", "repair.finished", "run.retry_started"],
+    "change": "Only the failed button locator changed from the old accessible name to the currently observed accessible name.",
+    "original_assertions_and_statement_positions_preserved": true,
+    "promoted_saved_script_version": 2,
+    "earlier_invalid_model_proposals": "Rejected with UNSAFE_REPAIR_SCRIPT; safety checks were not weakened."
+  },
+  "visual": {
+    "run_id": "run_2629a2f51e174149ab2b36d1299e0712",
+    "url": "https://outskill-group2-browser-studio.vercel.app/runs/run_2629a2f51e174149ab2b36d1299e0712",
+    "status": "PASSED",
+    "attempt_count": 1,
+    "saved_script_version": 2,
+    "visual_outcome": "DIFFERENCE",
+    "mismatch_percentage": 3.044,
+    "tolerance_percentage": 0.5,
+    "agent_id": "bS5GQjs2LrNHrJZH",
+    "agent_status": "REVIEWED",
+    "screenshots": 3,
+    "recordings": 1,
+    "discovery_or_repair_called": false,
+    "heatmap_visibly_verified": true
+  },
+  "local_regression_checks": {
+    "command": "backend/.venv/bin/python -m pytest -q backend/tests/test_n8n_contract.py backend/tests/test_n8n_workflows.py backend/tests/test_orchestrator.py",
+    "passed": 48
+  },
+  "limits": "One verified scenario is evidence, not a guarantee that every unrelated website will work. Visual comparison uses the first captured screenshot; the visual agent receives numeric metrics rather than raw images."
+}

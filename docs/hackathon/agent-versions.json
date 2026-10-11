@@ -1,19 +1,29 @@
 {
   "checked_date": "2026-10-11",
-  "changes": "Instructions only; model, credentials and tools preserved",
+  "changes": "With user approval, published agents use the existing OpenRouter connection instead of the managed Gateway. Repair instructions require an observed minimal locator edit; tools and platform safety checks are unchanged. No Vercel redeployment is required.",
   "agents": [
     {
       "purpose": "discovery",
       "agent_id": "QEzE1lGs9WbTU82H",
-      "active_version_id": "8d24e585-208b-4081-ac77-6958ac6cfbdf",
+      "active_version_id": "21e2c792-2343-4a9e-b6cd-8bc0e1ab19dc",
+      "model": "openrouter/openai/gpt-4o-mini",
       "instructions_sha256": "8905b83d8a953c16fc965003b13e9dfed32218e23ae58d3a7d495d2faad97f25",
       "published": true
     },
     {
       "purpose": "repair",
       "agent_id": "p3Sh9BmTzLMC0f8A",
-      "active_version_id": "46da0698-24a7-4319-9dd5-aa222d97761e",
-      "instructions_sha256": "1749549c3f5a7043b0ca8711c0653d23e3aa15ac8727a5f8826047df99f04520",
+      "active_version_id": "5bcf57ad-49ae-491d-aaeb-cce634c846fe",
+      "model": "openrouter/openai/gpt-4.1-mini",
+      "instructions_sha256": "569983624643399a340d3305d56f2d47299a8d4f1f656822ed337971437c0309",
+      "published": true
+    },
+    {
+      "purpose": "visual",
+      "agent_id": "bS5GQjs2LrNHrJZH",
+      "active_version_id": "4d23f2cb-c8fd-4b0e-ae7e-3f8b4504406b",
+      "model": "openrouter/openai/gpt-4o-mini",
+      "instructions_sha256": "9063b8a4a3211020b068dee1f501e79da3964291eee6f085365a545e52f80abf",
       "published": true
     }
   ]
