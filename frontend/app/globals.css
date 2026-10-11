@@ -103,6 +103,9 @@ td a { color: #d7ff82; }
 .live-switch button[aria-selected="true"] { background: var(--primary); color: #111708; }
 .live-switch button:disabled { opacity: .4; cursor: not-allowed; }
 .verification-panel { min-width: 0; }
+.timeline { align-items: stretch; }
+.timeline-step { min-height: 58px; }
+.timeline-step > svg { flex-shrink: 0; }
 .verification-session { min-width: 0; scroll-margin-top: 84px; }
 .journey-form .wizard-actions { align-items: center; flex-wrap: wrap; }
 .journey-form .wizard-actions > .muted { flex: 1 1 200px; }

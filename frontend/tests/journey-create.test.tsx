@@ -6,20 +6,36 @@ import JourneyCreatePage from "@/app/journeys/new/page";
 afterEach(() => { vi.unstubAllGlobals(); sessionStorage.clear(); });
 const envelope = (data: unknown, status = 200) => new Response(JSON.stringify({ data, error: null, meta: {} }), { status });
 
-test.each(["COMPLETED", "FAILED"])("a restored %s operation does not block a new verification", async status => {
+test.each(["COMPLETED", "FAILED"])("a previous %s operation leaves a new journey empty", async status => {
   sessionStorage.setItem("outskill.activeGeneration", "previous");
   vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo) => {
     const path = String(input);
-    if (path === "/api/operations/previous") return envelope({ id: "previous", status, run_id: null });
+    if (path === "/api/operations/previous") return envelope({ id: "previous", status, run_id: "previous-run" });
+    if (path === "/api/runs/previous-run") return envelope({ id: "previous-run", status: "PASSED", script_snapshot: "old script" });
     if (path.includes("/events")) return envelope([]);
     return envelope([{ id: "p1", name: "Web", description: "" }]);
   }));
   render(<JourneyCreatePage/>);
-  await screen.findByRole("button", { name: "Create another journey" });
+  await screen.findByRole("option", { name: "Web" });
+  await waitFor(() => expect(sessionStorage.getItem("outskill.activeGeneration")).toBeNull());
+  expect(screen.queryByRole("region", { name: "Live verification" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("tab", { name: "Playwright Script" })).not.toBeInTheDocument();
   fireEvent.change(screen.getByLabelText("Journey name"), { target: { value: "Another login" } });
   fireEvent.change(screen.getByLabelText("Target URL"), { target: { value: "https://example.test/login" } });
   fireEvent.change(screen.getByLabelText("Objective"), { target: { value: "Verify login" } });
   expect(screen.getByRole("button", { name: "Verify & record live" })).toBeEnabled();
+});
+
+test("a running verification resumes after refresh", async () => {
+  sessionStorage.setItem("outskill.activeGeneration", "running");
+  vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo) => {
+    if (String(input) === "/api/operations/running") return envelope({ id: "running", status: "RUNNING", run_id: null });
+    if (String(input).includes("/events")) return envelope([]);
+    return envelope([{ id: "p1", name: "Web", description: "" }]);
+  }));
+  render(<JourneyCreatePage/>);
+  expect(await screen.findByRole("region", { name: "Live verification" })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Verify & record live" })).toBeDisabled();
 });
 
 test("an autofilled password can be submitted without an input event", async () => {

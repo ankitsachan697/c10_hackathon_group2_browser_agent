@@ -57,7 +57,13 @@ export function JourneyForm() {
     void Promise.resolve().then(loadProjects);
     const savedId = sessionStorage.getItem(operationKey);
     if (savedId) {
-      void api<GenerationOperation>(`/api/operations/${savedId}`).then(setOperation).catch(() => sessionStorage.removeItem(operationKey));
+      void api<GenerationOperation>(`/api/operations/${savedId}`).then(value => {
+        if (["FAILED", "COMPLETED"].includes(value.status)) {
+          sessionStorage.removeItem(operationKey);
+        } else {
+          setOperation(value);
+        }
+      }).catch(() => sessionStorage.removeItem(operationKey));
     }
   }, [loadProjects]);
 

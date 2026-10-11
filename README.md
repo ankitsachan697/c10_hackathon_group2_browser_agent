@@ -39,6 +39,8 @@ Configure `N8N_BEARER_TOKEN` in repository or environment secrets when agent cal
 
 ### Browser execution after deployment
 
+For a Docker worker on your own Mac, follow the [local headed Chromium setup](docs/LOCAL_HEADED.md).
+
 Headless runs use the isolated Docker worker. To watch a run on your computer when the backend is remote, pair the local browser companion:
 
 1. Set `RUNNER_BROWSER_LOCATION=hosted`, `RUNNER_RELAY_BASE_URL` to a WebSocket-reachable backend URL (`wss://...` in deployment), and a private `COMPANION_ADMIN_TOKEN` in the backend runtime. The relay URL must be reachable from inside the runner container. The reverse proxy must route `/api/companions/relay/*` WebSockets directly to FastAPI; the Next.js HTTP proxy is not the WebSocket endpoint.
