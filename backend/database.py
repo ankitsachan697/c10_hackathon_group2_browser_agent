@@ -84,6 +84,11 @@ CREATE TABLE IF NOT EXISTS companion_pair_codes (
   code_hash TEXT PRIMARY KEY, user_scope TEXT NOT NULL, expires_at TEXT NOT NULL,
   used_at TEXT, created_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS demo_scenarios (
+  id TEXT PRIMARY KEY, locator_revision INTEGER NOT NULL DEFAULT 0,
+  visual_variant INTEGER NOT NULL DEFAULT 0, checkout_failure INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS companions (
   id TEXT PRIMARY KEY, name TEXT NOT NULL, user_scope TEXT NOT NULL,
   credential_hash TEXT NOT NULL, last_seen TEXT, revoked_at TEXT, created_at TEXT NOT NULL

@@ -46,14 +46,14 @@ def summarize_controls(html: str) -> str:
     parser = _ControlParser()
     parser.feed(html)
     controls = []
-    for control in parser.controls[:16]:
+    for control in parser.controls[:24]:
         item = dict(control)
         if "tag" not in item:
             item = {"tag": "input", **item}
         if item.get("id") in parser.labels:
             item["label"] = parser.labels[item["id"]]
         controls.append("; ".join(f"{key}={value}" for key, value in item.items()))
-    return "\n".join(controls)[:1800]
+    return "\n".join(controls)[:3200]
 
 
 def inspect_target_controls(url: str) -> str:

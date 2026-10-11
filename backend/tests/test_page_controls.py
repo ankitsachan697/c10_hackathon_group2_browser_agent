@@ -18,3 +18,11 @@ def test_form_summary_includes_real_control_names_without_values():
     assert "text=Submit" in summary
     assert "Password123" not in summary
     assert "student" not in summary
+
+
+def test_discovery_includes_late_checkout_controls_without_field_values():
+    html = ''.join(f'<button>Navigate {i}</button>' for i in range(16))
+    html += '<label for="address">Shipping address</label><input id="address" value="private"><button>Place order</button>'
+    summary = summarize_controls(html)
+    assert 'label=Shipping address' in summary and 'text=Place order' in summary
+    assert 'private' not in summary and len(summary) <= 3200

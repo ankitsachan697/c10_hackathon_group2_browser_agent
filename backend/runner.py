@@ -320,7 +320,7 @@ class PlaywrightRunner:
                 "--security-opt=no-new-privileges", "--pids-limit=256", "--memory=1g", "--cpus=1",
                 "--user=65532:65532", "--tmpfs=/tmp:rw,nosuid,size=256m",
                 "--mount", f"type=bind,src={Path(run_dir).resolve()},dst=/work",
-                "--workdir=/work",
+                "--workdir=/work", "--add-host=host.docker.internal:host-gateway",
             ]
             for key in sorted(environment):
                 if key in {"AUTH_USERNAME", "AUTH_PASSWORD", "ARTIFACTS_DIR", "PLAYWRIGHT_CDP_ENDPOINT", "PLAYWRIGHT_CDP_TIMEOUT_SECONDS", "PLAYWRIGHT_CDP_RUNNER_SECRET", "PYTHONUNBUFFERED"}:
@@ -411,6 +411,23 @@ class PlaywrightRunner:
 import os, sys
 os.environ.setdefault("ARTIFACTS_DIR", {repr(run_dir)})
 run_dir = {repr(run_dir)}
+
+def _worker_target_url(url):
+    # A paired browser runs on its own machine; only isolated worker navigation
+    # needs a Docker gateway. Public deployment origins remain untouched.
+    if {bool(self.container_image)!r} and not os.environ.get("PLAYWRIGHT_CDP_ENDPOINT"):
+        from urllib.parse import urlsplit, urlunsplit
+        parts = urlsplit(url)
+        if parts.scheme in ("http", "https") and parts.hostname in ("localhost", "127.0.0.1", "[::1]", "::1"):
+            authority = "host.docker.internal" + (f":{{parts.port}}" if parts.port else "")
+            return urlunsplit((parts.scheme, authority, parts.path, parts.query, parts.fragment))
+    return url
+
+from playwright.sync_api import Page as _WorkerPage
+_worker_original_goto = _WorkerPage.goto
+def _worker_goto(self, url, *args, **kwargs):
+    return _worker_original_goto(self, _worker_target_url(url), *args, **kwargs)
+_WorkerPage.goto = _worker_goto
 
 def _connect_or_launch(browser_type, *args, **kwargs):
     endpoint = os.environ.get("PLAYWRIGHT_CDP_ENDPOINT")
