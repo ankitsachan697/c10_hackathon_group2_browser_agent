@@ -5,5 +5,5 @@ export type ActivityEvent = { seq: number; scope_type: "run" | "operation"; sour
 export type Journey = { id: string; project_id: string; name: string; target_url: string; script: string; active: number; has_credentials?: boolean };
 export type RunAttempt = { attempt_number: number; status: string; stdout?: string; stderr?: string };
 export type Artifact = { id: string; kind: string; storage_path: string; media_type?: string };
-export type Run = { id: string; journey_id?: string; status: string; trigger_source: string; attempt_count: number; script_version?: number; created_at: string; script_snapshot?: string; repair_patch?: string; diagnosis_json?: string; attempts?: RunAttempt[]; artifacts?: Artifact[]; visual_outcome?: string; visual_review?: Record<string, unknown> | null };
+export type Run = { id: string; journey_id?: string; project_id?: string; status: string; trigger_source: string; attempt_count: number; script_version?: number; created_at: string; script_snapshot?: string; repair_patch?: string; diagnosis_json?: string; attempts?: RunAttempt[]; artifacts?: Artifact[]; visual_outcome?: string; visual_review?: Record<string, unknown> | null };
 export type Schedule = { id: string; journey_id?: string; project_id?: string; local_time: string; timezone: string; enabled: number; next_run?: string };

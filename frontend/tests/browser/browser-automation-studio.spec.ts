@@ -26,8 +26,9 @@ test("saved journeys run directly, remain inspectable, schedulable, and deletabl
   await page.getByRole("link", { name: "Projects" }).click();
   await expect(page.getByText("Checkout coverage")).toBeVisible();
   await page.getByRole("button", { name: "Project actions" }).click();
-  await page.getByRole("button", { name: "Run now" }).click();
-  await expect(page.getByText("Started Checkout coverage")).toBeVisible();
+  await page.getByRole("menuitem", { name: "Run now" }).click();
+  await expect(page.getByText("Executed 1 saved scripts")).toBeVisible();
+  await page.getByRole("button", { name: "Close project" }).click();
 
   await page.getByRole("link", { name: "Runs" }).click();
   await expect(page.getByText("PASSED")).toBeVisible();
@@ -43,7 +44,7 @@ test("saved journeys run directly, remain inspectable, schedulable, and deletabl
 
   await page.getByRole("link", { name: "Projects" }).click();
   await page.getByRole("button", { name: "Project actions" }).click();
-  await page.getByRole("button", { name: "Delete" }).click();
+  await page.getByRole("menuitem", { name: "Delete" }).click();
   const dialog = page.getByRole("dialog");
   await expect(dialog).toContainText("journeys");
   await dialog.getByRole("button", { name: "Delete project" }).click();
