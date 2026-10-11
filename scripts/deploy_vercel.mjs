@@ -35,7 +35,7 @@ export async function configureDeployment(target, env, api) {
   }
   await api(`/v10/projects/${target.projectId}/env?${scope}&upsert=true`, { method: "POST", body: variables });
   await api(`/v9/projects/${target.projectId}?${scope}`, { method: "PATCH", body: {
-    framework: "nextjs", rootDirectory: "frontend", includeFilesOutsideRootDirectory: true,
+    framework: "nextjs", rootDirectory: "frontend", sourceFilesOutsideRootDirectory: true,
     buildCommand: "npm run build", installCommand: "npm ci", autoExposeSystemEnvs: true,
   } });
   return { accountPlan: "hobby", projectName: target.projectName, privateConfigurationReady: true };

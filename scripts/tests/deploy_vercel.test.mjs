@@ -31,6 +31,9 @@ test("private mapping preserves existing stable controller keys and does not exp
   assert.equal(variables.some(item => item.key === "CLOUD_CONTROL_SECRET"), false);
   assert.equal(variables.some(item => item.key.startsWith("NEXT_PUBLIC_")), false);
   assert.equal(mutations.some(call => call.body?.ssoProtection === null), false);
+  const projectUpdate = mutations.find(call => call.method === "PATCH").body;
+  assert.equal(projectUpdate.sourceFilesOutsideRootDirectory, true);
+  assert.equal(Object.hasOwn(projectUpdate, "includeFilesOutsideRootDirectory"), false);
 });
 
 test("deployment source staging excludes local history and credentials", () => {
