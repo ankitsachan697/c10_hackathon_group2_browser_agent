@@ -13,11 +13,11 @@ BACKEND_MODULES = (
     "scheduler", "test_suite_manager", "legacy_import", "generation", "orchestrator",
     "page_controls", "failure_context", "event_store", "redaction", "visual_diff",
     "visual_review", "companion_registry", "cdp_relay",
-    "cloud_policy", "cloud_auth", "cloud_lifecycle",
+    "cloud_policy", "cloud_auth", "cloud_lifecycle", "sandbox_transport", "sandbox_runner", "cloud_jobs", "cloud_media",
 )
 API_MODULES = (
     "__init__", "context", "system", "projects", "journeys", "runs", "schedules",
-    "environments", "operations", "companions", "demo_lab",
+    "environments", "operations", "companions", "demo_lab", "media",
 )
 RUNTIME_FILES = (
     *(f"backend/{name}.py" for name in BACKEND_MODULES),

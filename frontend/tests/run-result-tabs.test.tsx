@@ -40,3 +40,17 @@ test("empty media states do not leave broken previews", () => {
   fireEvent.click(screen.getByRole("tab", { name: "Recording" }));
   expect(screen.getByText(/No recording captured/i)).toBeInTheDocument();
 });
+
+test("expired recording retries a fresh capability and restores the playback position", () => {
+  const { container } = render(<RunResultTabs run={run} runEvents={[]}/>);
+  fireEvent.click(screen.getByRole("tab", { name: "Recording" }));
+  const video = container.querySelector("video")!;
+  video.currentTime = 7;
+  fireEvent.error(video);
+  expect(container.querySelector("video")).toHaveAttribute("src", "/api/artifacts/vid1?refresh=1");
+  fireEvent.loadedMetadata(container.querySelector("video")!);
+  expect(container.querySelector("video")!.currentTime).toBe(7);
+  fireEvent.error(container.querySelector("video")!);
+  fireEvent.error(container.querySelector("video")!);
+  expect(screen.getByText(/Preview unavailable/)).toBeInTheDocument();
+});

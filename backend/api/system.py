@@ -1,7 +1,8 @@
 from fastapi import APIRouter, Depends, HTTPException, Request
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, RedirectResponse
 
 from .context import AppServices, error, ok, services
+from ..cloud_media import issue_artifact_capability, media_path
 
 
 router = APIRouter(tags=["system"])
@@ -31,7 +32,7 @@ def public_config(request: Request):
 
 
 @router.get("/artifacts/{artifact_id}")
-def get_artifact(artifact_id: str, svc: AppServices = Depends(services)):
+def get_artifact(artifact_id: str, request: Request, svc: AppServices = Depends(services)):
     artifact = svc.artifacts.repository.get(artifact_id)
     if not artifact or artifact.get("deleted_at"):
         raise HTTPException(404, detail=error("NOT_FOUND", "Artifact not found"))
@@ -41,4 +42,13 @@ def get_artifact(artifact_id: str, svc: AppServices = Depends(services)):
         raise HTTPException(404, detail=error("NOT_FOUND", "Artifact not found"))
     if not path.is_file():
         raise HTTPException(404, detail=error("NOT_FOUND", "Artifact not found"))
+    policy = getattr(request.app.state, "cloud_policy", None)
+    if policy and policy.enabled:
+        try:
+            media_path(svc.artifacts.root, artifact)
+        except FileNotFoundError:
+            raise HTTPException(404, detail=error("NOT_FOUND", "Artifact not found")) from None
+        token = issue_artifact_capability(artifact_id, policy.media_secret)
+        return RedirectResponse(f"{policy.origin}/api/media/{artifact_id}?token={token}", status_code=307,
+                                headers={"Cache-Control": "private, no-store", "Referrer-Policy": "no-referrer"})
     return FileResponse(path, media_type=artifact.get("media_type"))

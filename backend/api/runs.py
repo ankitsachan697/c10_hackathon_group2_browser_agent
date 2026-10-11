@@ -4,7 +4,7 @@ import json
 import asyncio
 from fastapi.responses import JSONResponse
 
-from .context import AppServices, error, ok, services
+from .context import AppServices, error, ok, services, submit_background_run
 from ..models import TriggerSource
 from ..repositories import RunRepository
 from ..event_store import EventStore
@@ -57,34 +57,9 @@ async def rerun(run_id: str, payload: RerunRequest, svc: AppServices = Depends(s
     trigger = TriggerSource.RERUN_CURRENT if payload.mode == "current" else TriggerSource.RERUN_SNAPSHOT
     options = {"script_version": run_id if payload.mode == "snapshot" else None,
                "headed": payload.browser_mode == "headed", "companion_id": payload.companion_id}
-    if not payload.background:
+    if not payload.background and not getattr(svc.orchestrator, "cloud_jobs", None):
         return ok(await svc.orchestrator.run_journey(historic["journey_id"], trigger, **options))
-    created = asyncio.get_running_loop().create_future()
-
-    def on_created(value):
-        if not created.done():
-            created.set_result(value)
-
-    async def execute():
-        try:
-            await svc.orchestrator.run_journey(historic["journey_id"], trigger, on_run_created=on_created, **options)
-        except Exception as failure:
-            if not created.done():
-                created.set_exception(failure)
-            else:
-                value = created.result()
-                RunRepository(svc.database).update(value["id"], {"status": "NEEDS_ATTENTION", "final_decision": f"Rerun interrupted: {type(failure).__name__}"})
-                EventStore(svc.database).append("run", value["id"], "system", "run.finished", {"status": "NEEDS_ATTENTION"})
-
-    task = asyncio.create_task(execute())
-    svc.run_tasks.add(task)
-    task.add_done_callback(svc.run_tasks.discard)
-    try:
-        return JSONResponse(ok(await created), status_code=202)
-    except KeyError:
-        raise HTTPException(404, detail=error("NOT_FOUND", "Saved journey not found"))
-    except Exception:
-        raise HTTPException(409, detail=error("RUN_UNAVAILABLE", "A run is already active or the browser is unavailable"))
+    return await submit_background_run(svc, historic["journey_id"], trigger, **options)
 
 
 @router.delete("/{run_id}")

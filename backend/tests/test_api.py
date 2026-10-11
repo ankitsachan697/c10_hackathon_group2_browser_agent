@@ -105,6 +105,19 @@ def test_run_now_and_reruns_never_generate(api):
     assert services.agents.generation_calls == 0
 
 
+def test_cloud_saved_journey_returns_queued_receipt_without_waiting_for_execution(api):
+    client, services = api
+    _, journey = create_journey(client)
+    services.orchestrator.cloud_jobs = object()
+    async def slow(_journey, _trigger, on_run_created=None, **kwargs):
+        on_run_created({"id": "queued-proof", "status": "QUEUED"})
+        await asyncio.sleep(60)
+    services.orchestrator.run_journey = slow
+    response = client.post(f"/api/journeys/{journey['id']}/run")
+    assert response.status_code == 202
+    assert response.json()['data']['status'] == 'QUEUED'
+
+
 def test_create_operation_first_run_events_and_saved_rerun_skip_discovery(api, tmp_path):
     client, services = api
     project = client.post("/api/projects", json={"name": "Web"}).json()["data"]

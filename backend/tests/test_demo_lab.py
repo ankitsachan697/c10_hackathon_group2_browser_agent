@@ -1,7 +1,15 @@
 import pytest
+from types import SimpleNamespace
 
 from backend.tests.test_api import api
 from backend.runner import PlaywrightRunner
+
+
+def test_cloud_demo_returns_public_controller_target_not_protected_frontend(api):
+    client, _ = api
+    client.app.state.cloud_policy = SimpleNamespace(origin="https://controller.example")
+    value = client.post('/api/demo-lab/scenarios', json={}).json()['data']
+    assert value['target_url'] == f"https://controller.example{value['target_path']}"
 
 
 def test_scenario_isolated_partial_updates_and_html_available(api):

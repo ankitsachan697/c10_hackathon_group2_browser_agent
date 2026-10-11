@@ -36,6 +36,9 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from config import Settings
 from cloud_policy import CloudPolicy
 from cloud_auth import CloudAuthMiddleware
+from sandbox_transport import SandboxTransport
+from sandbox_runner import SandboxPlaywrightRunner
+from backend.cloud_jobs import CloudJobs, CloudJobError
 from runner import PlaywrightRunner
 from visual_diff import compare_images
 from visual_review import VisualReview
@@ -60,6 +63,7 @@ except ImportError:
 
 settings = Settings.from_env()
 cloud_policy = CloudPolicy.from_env()
+cloud_jobs = CloudJobs(cloud_policy) if cloud_policy.enabled else None
 n8n_client = N8nClient(settings)
 schedule_service = None
 
@@ -68,7 +72,7 @@ schedule_service = None
 async def lifespan(application: FastAPI):
     if application.state.services.orchestrator:
         application.state.services.orchestrator.recover_interrupted()
-    if application.state.services.generation and not cloud_policy.enabled:
+    if application.state.services.generation:
         application.state.services.generation.recover()
     if schedule_service and not cloud_policy.enabled:
         schedule_service.start()
@@ -88,7 +92,7 @@ app = FastAPI(
     version="1.0.0",
     lifespan=lifespan,
 )
-app.add_middleware(CloudAuthMiddleware, policy=cloud_policy)
+app.add_middleware(CloudAuthMiddleware, policy=cloud_policy, execution_ready=bool(cloud_jobs))
 
 app.add_middleware(
     CORSMiddleware,
@@ -107,6 +111,9 @@ runner = PlaywrightRunner(
     container_image=settings.runner_container_image,
     allow_unsafe_local_execution=settings.allow_unsafe_local_execution,
 )
+if cloud_policy.enabled:
+    runner = SandboxPlaywrightRunner(ARTIFACTS_DIR, SandboxTransport(cloud_policy, os.environ["CLOUD_WORKER_IMAGE"]))
+    n8n_client.inspector = runner.inspect_target_controls
 domain_database = Database(settings.database_path)
 domain_database.initialize()
 companion_registry = CompanionRegistry(domain_database, settings.companion_admin_token)
@@ -122,12 +129,13 @@ if settings.runner_timeout_seconds is not None:
                                    settings.visual_diff_threshold, settings.visual_tolerance_percent),
         browser_location=settings.runner_browser_location, companion_registry=companion_registry,
         cdp_relay=cdp_relay, relay_base_url=settings.runner_relay_base_url,
+        cloud_jobs=cloud_jobs,
     )
     schedule_service = ScheduleService(domain_database, run_orchestrator, APSchedulerAdapter())
 else:
     run_orchestrator = None
 artifact_store = ArtifactStore(settings.artifacts_root, settings.artifact_trash_root, ArtifactRepository(domain_database))
-generation_coordinator = GenerationCoordinator(domain_database, n8n_client, run_orchestrator, credential_vault) if run_orchestrator else None
+generation_coordinator = GenerationCoordinator(domain_database, n8n_client, run_orchestrator, credential_vault, cloud_jobs=cloud_jobs) if run_orchestrator else None
 
 # In-memory log buffer for streaming logs to frontend
 active_run_logs: Dict[str, List[Dict[str, Any]]] = {}
@@ -213,15 +221,16 @@ def health_check():
     return {
         "status": "healthy",
         "timestamp": time.time(),
-        "runner_ready": settings.runner_timeout_seconds is not None and not cloud_policy.enabled,
-        "browser_mode": "remote_cdp" if settings.playwright_cdp_endpoint else "local",
-        "runner_isolation": "pending-cloud-worker" if cloud_policy.enabled else ("container" if settings.runner_container_image else ("unsafe-local" if settings.allow_unsafe_local_execution else "unavailable")),
+        "runner_ready": settings.runner_timeout_seconds is not None,
+        "browser_mode": "cloud_headless" if cloud_policy.enabled else ("remote_cdp" if settings.playwright_cdp_endpoint else "local"),
+        "runner_isolation": "ephemeral-microvm" if cloud_policy.enabled else ("container" if settings.runner_container_image else ("unsafe-local" if settings.allow_unsafe_local_execution else "unavailable")),
         "n8n_connected": n8n_client.is_configured,
         "scheduler_ready": bool(schedule_service and getattr(app.state, "scheduler_ready", False)),
         "credential_vault_ready": credential_vault is not None,
         "source_revision": cloud_policy.source_revision if cloud_policy.enabled else None,
         "cloud_mode": cloud_policy.enabled,
-        "deployment_phase": "studio-and-api" if cloud_policy.enabled else "local",
+        "deployment_phase": "remote-headless" if cloud_policy.enabled else "local",
+        "active_cloud_job": cloud_jobs.active_job if cloud_jobs else None,
     }
 
 
@@ -657,6 +666,7 @@ def get_artifact(file_path: str):
 
 
 app.state.settings = settings
+app.state.cloud_policy = cloud_policy
 app.state.services = AppServices(
     database=domain_database,
     orchestrator=run_orchestrator,
@@ -669,6 +679,10 @@ app.state.services = AppServices(
     relay=cdp_relay,
 )
 install_api(app)
+
+@app.exception_handler(CloudJobError)
+async def cloud_job_unavailable(request: Request, error: CloudJobError):
+    return JSONResponse({"data": None, "error": {"code": "CLOUD_JOB_UNAVAILABLE", "message": str(error)}, "meta": {}}, status_code=409)
 
 
 if __name__ == "__main__":

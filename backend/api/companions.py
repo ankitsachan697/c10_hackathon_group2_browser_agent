@@ -37,6 +37,9 @@ def list_companions(svc: AppServices = Depends(services)):
 
 @router.get("/capabilities")
 def browser_capabilities(svc: AppServices = Depends(services)):
+    if getattr(getattr(svc.orchestrator, "runner", None), "requires_target_url", False):
+        return ok({"location": "hosted", "headed_supported": False,
+                   "reason": "Cloud headless is available. Remote headed pairing is not enabled in this release."})
     orchestrator = svc.orchestrator
     if not orchestrator:
         return ok({"location": "unavailable", "headed_supported": False, "reason": "Browser runner is unavailable"})

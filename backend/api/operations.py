@@ -5,6 +5,7 @@ from pydantic import BaseModel, Field
 
 from .context import AppServices, error, ok, services
 from ..event_store import EventStore
+from ..cloud_jobs import CloudJobError
 
 
 router = APIRouter(prefix="/operations", tags=["operations"])
@@ -28,6 +29,8 @@ async def create_generation(payload: GenerationRequest, idempotency_key: str = H
         raise HTTPException(503, detail=error("GENERATION_UNAVAILABLE", "Generation service is unavailable"))
     try:
         operation = svc.generation.submit(payload.model_dump(), idempotency_key)
+    except CloudJobError as failure:
+        raise HTTPException(409, detail=error("CLOUD_JOB_UNAVAILABLE", str(failure))) from failure
     except ValueError as failure:
         raise HTTPException(422, detail=error("INVALID_GENERATION", str(failure))) from failure
     svc.generation.schedule(operation["id"])

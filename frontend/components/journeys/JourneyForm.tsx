@@ -2,10 +2,11 @@
 
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { Eye, EyeOff, FolderPlus, Sparkles } from "lucide-react";
+import { Eye, EyeOff, FolderPlus } from "lucide-react";
 import { api } from "@/lib/api";
 import type { GenerationOperation, Project, Run } from "@/lib/types";
 import { Button } from "@/components/ui/Button";
+import { ExecutionButton } from "@/components/ui/ExecutionButton";
 import { Card } from "@/components/ui/Card";
 import { CreateProjectDialog } from "@/components/projects/CreateProjectDialog";
 import { LiveRunProgress } from "@/components/runs/LiveRunProgress";
@@ -163,7 +164,7 @@ export function JourneyForm() {
         <CompanionPicker mode={mode} onModeChange={setMode} companionId={companionId} onCompanionChange={setCompanionId}/>
         <label className="offline-row"><input type="checkbox" checked={offline} onChange={event => setOffline(event.target.checked)}/>Use local offline script generation if n8n is unavailable</label>
         {error && <p className="form-error" role="alert">{error}</p>}
-        <div className="wizard-actions">{operationActive ? <a className="muted" href="#live-verification">A verification is running. View its progress below.</a> : !canSubmit ? <span className="muted">Choose a project and enter the objective, journey name, and target URL.</span> : null}<Button type="submit" aria-label="Verify & record live" disabled={!canSubmit || busy || operationActive}><Sparkles size={16}/>{busy ? "Starting…" : "Verify & record live"}</Button></div>
+        <div className="wizard-actions">{operationActive ? <a className="muted" href="#live-verification">A verification is running. View its progress below.</a> : !canSubmit ? <span className="muted">Choose a project and enter the objective, journey name, and target URL.</span> : null}<ExecutionButton type="submit" label="Verify & record live" status={busy ? "STARTING" : run?.status ?? (operationActive ? operation?.status : operation?.status === "FAILED" ? "FAILED" : "")} disabled={!canSubmit || busy || operationActive}/></div>
       </form>
     </Card>
     {operation && <div id="live-verification" className="verification-session"><Card><div className="operation-heading"><p className="eyebrow">Live activity</p><div className="run-actions">{operation.run_id && <Link className="button primary-link" href={`/runs/${operation.run_id}`}>Open run</Link>}{["FAILED", "COMPLETED"].includes(operation.status) && <Button type="button" className="button-secondary" onClick={startAnother}>Create another journey</Button>}</div></div>

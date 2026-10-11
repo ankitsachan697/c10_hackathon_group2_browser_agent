@@ -54,8 +54,9 @@ def _normalize_text_waits(script: str) -> str:
 
 
 class N8nClient:
-    def __init__(self, settings: Settings):
+    def __init__(self, settings: Settings, inspector=None):
         self.settings = settings
+        self.inspector = inspector
         self.mcp_url = settings.n8n_mcp_url
         self.token = settings.n8n_bearer_token
         self.headers = {
@@ -180,7 +181,7 @@ class N8nClient:
             raise AgentError("AGENT_NOT_CONFIGURED", "Discovery agent is not enabled or authenticated on this backend")
 
         has_auth = bool((credentials_meta or {}).get("has_auth"))
-        controls = inspect_target_controls(url)
+        controls = (self.inspector or inspect_target_controls)(url)
         prompt = (
             f"Target URL: {url}\n"
             f"Navigate initially to this exact full URL: {url}. Do not shorten, omit or replace its path, ID, query or fragment.\n"

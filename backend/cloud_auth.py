@@ -14,6 +14,8 @@ except ImportError:
 PUBLIC_DEMO = re.compile(r"^/api/demo-shop/[A-Za-z0-9_-]{1,100}(?:/(?:shop\.css|shop\.js))?$")
 DEVICE_HTTP = re.compile(r"^/api/companions/(?:exchange|heartbeat|[A-Za-z0-9_-]{1,100}/sessions)$")
 DEVICE_WS = re.compile(r"^/api/companions/relay/[A-Za-z0-9_-]{1,100}/(?:companion|runner)$")
+MEDIA_PATH = re.compile(r"^/api/media/[A-Za-z0-9_-]{1,100}$")
+SAFE_EXECUTION_PATH = re.compile(r"^/api/(?:operations/generations|(?:journeys|runs)/[A-Za-z0-9_-]+/(?:run|rerun))$")
 EXECUTION_PATH = re.compile(
     r"^/api/(?:operations/generations|discovery-and-generate|execute|execute-script|"
     r"diagnose-and-repair|visual-diff|autonomous-run|"
@@ -32,13 +34,17 @@ def authenticate_cloud_request(request: Request, policy: CloudPolicy) -> None:
 
 
 class CloudAuthMiddleware:
-    def __init__(self, app, policy: CloudPolicy):
+    def __init__(self, app, policy: CloudPolicy, execution_ready=False):
         self.app, self.policy = app, policy
+        self.execution_ready = execution_ready
 
     async def __call__(self, scope, receive, send):
         if not self.policy.enabled or scope["type"] not in {"http", "websocket"}:
             return await self.app(scope, receive, send)
         path, method = scope.get("path", ""), scope.get("method", "")
+        if scope["type"] == "http" and method == "GET" and MEDIA_PATH.fullmatch(path):
+            # This read-only handler authenticates its exact artifact capability.
+            return await self.app(scope, receive, send)
         # These existing endpoints validate scoped pairing/device/relay credentials
         # themselves. They cannot grant general controller/API authorization.
         if scope["type"] == "websocket" and DEVICE_WS.fullmatch(path):
@@ -59,8 +65,9 @@ class CloudAuthMiddleware:
         # Deployment-first release: the trusted controller may store/manage data,
         # but must never inspect arbitrary targets or execute generated code.
         # Remove this gate only alongside the isolated worker implementation.
-        if scope["type"] == "http" and method == "POST" and EXECUTION_PATH.fullmatch(path):
+        if (scope["type"] == "http" and method == "POST" and EXECUTION_PATH.fullmatch(path)
+                and not (self.execution_ready and SAFE_EXECUTION_PATH.fullmatch(path))):
             return await JSONResponse({"error": {"code": "CLOUD_EXECUTION_PENDING", "message":
-                "Studio and API are live. Remote browser execution is not enabled yet; the isolated worker is pending."}},
+                "This execution route is not enabled on the cloud controller. Use New journey with Headless, or rerun a saved script."}},
                 status_code=503)(scope, receive, send)
         await self.app(scope, receive, send)

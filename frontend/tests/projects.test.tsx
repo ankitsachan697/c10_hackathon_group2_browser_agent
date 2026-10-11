@@ -57,7 +57,7 @@ test("historic rerun executes its saved snapshot and exposes the resulting run",
   fireEvent.click(within(drawer).getByRole("tab", { name: /Run history/ }));
   fireEvent.click(within(drawer).getByRole("button", { name: /Rerun this version/ }));
   expect(await within(drawer).findByRole("link", { name: "Open latest run" })).toHaveAttribute("href", "/runs/run-new");
-  expect(fetch).toHaveBeenCalledWith("/api/runs/run-old/rerun", expect.objectContaining({ method: "POST", body: JSON.stringify({ mode: "snapshot" }) }));
+  expect(fetch).toHaveBeenCalledWith("/api/runs/run-old/rerun", expect.objectContaining({ method: "POST", body: JSON.stringify({ mode: "snapshot", background: true }) }));
   expect(fetch).not.toHaveBeenCalledWith(expect.stringContaining("generate"), expect.anything());
 });
 

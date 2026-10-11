@@ -17,3 +17,10 @@ test('switch changes immediately while the server saves, then rolls back a rejec
   expect(await screen.findByRole('alert')).toBeInTheDocument();
   expect(toggle).not.toBeChecked();
 });
+
+test('remote demo journey uses the public backend URL rather than protected Studio origin', async () => {
+  vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ data: [{ id: 'scenario', target_path: '/api/demo-shop/scenario', target_url: 'https://controller.example/api/demo-shop/scenario', locator_revision: 0, visual_variant: false, checkout_failure: false }] }))));
+  render(<DemoLabPage/>);
+  const link = await screen.findByRole('link', { name: /Open demo shop/ });
+  expect(link).toHaveAttribute('href', 'https://controller.example/api/demo-shop/scenario');
+});

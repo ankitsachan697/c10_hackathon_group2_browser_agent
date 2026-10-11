@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field, HttpUrl
 
-from .context import AppServices, error, ok, services
+from .context import AppServices, error, ok, services, submit_background_run
 from ..models import TriggerSource
 from ..repositories import JourneyRepository, ProjectRepository
 from ..n8n_client import AgentError
@@ -33,6 +33,7 @@ class JourneyCredentials(BaseModel):
 class JourneyRunRequest(BaseModel):
     browser_mode: str = "headless"
     companion_id: str | None = None
+    background: bool = False
 
 
 def _journey(repo, resource_id):
@@ -115,8 +116,10 @@ async def run_journey(journey_id: str, payload: JourneyRunRequest | None = None,
     selected = payload or JourneyRunRequest()
     if selected.browser_mode not in {"headless", "headed"}:
         raise HTTPException(422, detail=error("INVALID_MODE", "Browser mode must be headless or headed"))
-    return ok(await svc.orchestrator.run_journey(journey_id, TriggerSource.ON_DEMAND,
-                                                 headed=selected.browser_mode == "headed", companion_id=selected.companion_id))
+    options = {"headed": selected.browser_mode == "headed", "companion_id": selected.companion_id}
+    if selected.background or getattr(svc.orchestrator, "cloud_jobs", None):
+        return await submit_background_run(svc, journey_id, TriggerSource.ON_DEMAND, **options)
+    return ok(await svc.orchestrator.run_journey(journey_id, TriggerSource.ON_DEMAND, **options))
 
 
 @router.delete("/{journey_id}")

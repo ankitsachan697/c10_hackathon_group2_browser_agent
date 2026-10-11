@@ -56,9 +56,11 @@ async function bootstrapController(settings: CloudSettings): Promise<ControllerH
     keepLastSnapshots: { count: 1, expiration: 0, deleteEvicted: true },
     resources: { vcpus: 1 }, ports: [8000], timeout: settings.sessionMinutes * 60_000,
     // Trusted controller installs dependencies and calls n8n/Vercel only.
-    networkPolicy: { allow: ["pypi.org", "files.pythonhosted.org", "api.vercel.com", "outskilltraining.app.n8n.cloud"] },
+    networkPolicy: { allow: ["pypi.org", "files.pythonhosted.org", "api.vercel.com", "vercel.com", "outskilltraining.app.n8n.cloud"] },
   });
   if (!sandbox.persistent || sandbox.snapshotExpiration !== 0) throw new Error("Controller persistence policy differs from the approved policy");
+  // Restoring an existing controller does not reapply create options.
+  await sandbox.updateNetworkPolicy({ allow: ["pypi.org", "files.pythonhosted.org", "api.vercel.com", "vercel.com", "outskilltraining.app.n8n.cloud"] });
   const origin = sandbox.domain(8000);
   const archive = await readFile(settings.runtimePath);
   const hash = createHash("sha256").update(archive).digest("hex");

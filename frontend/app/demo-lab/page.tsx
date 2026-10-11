@@ -6,7 +6,7 @@ import { api } from "@/lib/api";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 
-type Scenario = { id: string; target_path: string; locator_revision: 0 | 1; visual_variant: boolean; checkout_failure: boolean };
+type Scenario = { id: string; target_path: string; target_url?: string; locator_revision: 0 | 1; visual_variant: boolean; checkout_failure: boolean };
 const objective = 'Sign in using the supplied credentials and validate "Logged In Successfully". Add one Studio Notebook to cart, open View cart, proceed to Checkout, fill Full name with "Demo Tester", Shipping email with "tester@example.test", Shipping address with "123 Example Street", then Place demo order. Assert the heading "Order confirmed" is visible. Capture screenshots at login, cart, and confirmation. Use exact accessible names for form labels and buttons, and a 5 second default action timeout.';
 
 export default function DemoLabPage() {
@@ -24,7 +24,7 @@ export default function DemoLabPage() {
     return () => { active = false; };
   }, []);
   const current = scenarios.find(item => item.id === selected);
-  const target = current ? origin + current.target_path : "";
+  const target = current ? current.target_url || origin + current.target_path : "";
   const create = async () => {
     setBusy(true); setError(""); setNotice("");
     try { const value = await api<Scenario>("/api/demo-lab/scenarios", { method: "POST", body: "{}" }); setScenarios(items => [value, ...items]); setSelected(value.id); }
@@ -56,6 +56,6 @@ export default function DemoLabPage() {
       <label><input type="checkbox" checked={current?.visual_variant ?? false} disabled={!current || busy} onChange={event => void change({ visual_variant: event.target.checked })}/><span><strong>Apply visual redesign</strong><small>Change colors, borders, and spacing without changing the purchase flow. The locked baseline stays intact.</small></span></label>
       <label><input type="checkbox" checked={current?.checkout_failure ?? false} disabled={!current || busy} onChange={event => void change({ checkout_failure: event.target.checked })}/><span><strong>Reject checkout</strong><small>A genuine product failure. The confirmation assertion must fail and require attention—not be auto-healed.</small></span></label>
     </div><div className="run-actions demo-links"><Button disabled={!current || busy} onClick={() => void change({ locator_revision: 0, visual_variant: false, checkout_failure: false })}>Reset target</Button><Link href="/runs" className="button primary-link">Open runs and replay</Link></div></Card>
-    <p className="muted">Local Docker automatically reaches loopback URLs through its host gateway. For remote use, open Studio at its deployed origin and create a fresh scenario there. Headed mode uses a paired local browser from Settings.</p>
+    <p className="muted">Local Docker reaches loopback URLs through its host gateway. Cloud scenarios use the public demo endpoint on the browser backend, so Vercel login protection does not block the worker. Use Headless for remote verification.</p>
   </div>;
 }

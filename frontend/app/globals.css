@@ -160,6 +160,19 @@ td a { color: #d7ff82; }
   .project-journey, .project-history-row { align-items: flex-start; flex-direction: column; gap: 12px; }
 }
 * { scrollbar-width: thin; scrollbar-color: #38422f #0a0d08; }
+.execution-button { min-width: 174px; gap: 9px; min-height: 40px; }
+.execution-button > span:first-of-type { display: grid; text-align: left; line-height: 1.35; }
+.execution-button small { display: block; font-size: 10px; font-weight: 500; opacity: .8; }
+.button.execution-active:disabled { opacity: 1; cursor: progress; color: #d7ff82; background: #243117; border-color: #8abd34; box-shadow: 0 0 0 2px #b7f53612; }
+.execution-passed { color: #93efc6; border-color: #30644c; background: #10231a; }
+.execution-failed { color: #ffadba; border-color: #90364a; background: #2d121a; }
+.execution-spinner { animation: execution-spin 1s linear infinite; flex-shrink: 0; }
+.execution-dot { width: 7px; height: 7px; border-radius: 50%; background: #b7f536; flex-shrink: 0; animation: execution-pulse 1.5s ease-in-out infinite; }
+.status { display: inline-flex; align-items: center; gap: 5px; }
+.status-active { color: #d7ff82; border: 1px solid #617638; background: #243117; }
+@keyframes execution-spin { to { transform: rotate(360deg); } }
+@keyframes execution-pulse { 50% { box-shadow: 0 0 0 5px #b7f53620; opacity: .55; } }
+@media (prefers-reduced-motion: reduce) { .execution-spinner, .execution-dot { animation: none; } }
 @media (max-width: 760px) {
   main { padding: 18px 12px; }
   .journey-create > .card { padding: 16px; }

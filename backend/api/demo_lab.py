@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse
 from pydantic import BaseModel, ConfigDict
 
@@ -22,7 +22,7 @@ class ScenarioChange(BaseModel):
     checkout_failure: bool | None = None
 
 
-def scenario(svc: AppServices, scenario_id: str):
+def scenario(svc: AppServices, scenario_id: str, public_origin: str = ""):
     with svc.database.connect() as db:
         row = db.execute("SELECT * FROM demo_scenarios WHERE id=?", (scenario_id,)).fetchone()
     if not row:
@@ -31,27 +31,29 @@ def scenario(svc: AppServices, scenario_id: str):
     value["visual_variant"] = bool(value["visual_variant"])
     value["checkout_failure"] = bool(value["checkout_failure"])
     value["target_path"] = f"/api/demo-shop/{scenario_id}"
+    if public_origin:
+        value["target_url"] = public_origin.rstrip("/") + value["target_path"]
     return value
 
 
 @router.post("/demo-lab/scenarios", status_code=201)
-def create_scenario(svc: AppServices = Depends(services)):
+def create_scenario(request: Request, svc: AppServices = Depends(services)):
     scenario_id = uuid.uuid4().hex
     with svc.database.transaction() as db:
         db.execute("INSERT INTO demo_scenarios(id,created_at) VALUES (?,?)",
                    (scenario_id, datetime.now(timezone.utc).isoformat()))
-    return ok(scenario(svc, scenario_id))
+    return ok(scenario(svc, scenario_id, getattr(getattr(request.app.state, "cloud_policy", None), "origin", "")))
 
 
 @router.get("/demo-lab/scenarios")
-def list_scenarios(svc: AppServices = Depends(services)):
+def list_scenarios(request: Request, svc: AppServices = Depends(services)):
     with svc.database.connect() as db:
         ids = [row[0] for row in db.execute("SELECT id FROM demo_scenarios ORDER BY created_at DESC LIMIT 50")]
-    return ok([scenario(svc, item) for item in ids])
+    return ok([scenario(svc, item, getattr(getattr(request.app.state, "cloud_policy", None), "origin", "")) for item in ids])
 
 
 @router.patch("/demo-lab/scenarios/{scenario_id}")
-def update_scenario(scenario_id: str, change: ScenarioChange, svc: AppServices = Depends(services)):
+def update_scenario(scenario_id: str, change: ScenarioChange, request: Request, svc: AppServices = Depends(services)):
     scenario(svc, scenario_id)
     values = change.model_dump(exclude_unset=True, exclude_none=True)
     if values:
@@ -59,7 +61,7 @@ def update_scenario(scenario_id: str, change: ScenarioChange, svc: AppServices =
         with svc.database.transaction() as db:
             db.execute(f"UPDATE demo_scenarios SET {','.join(f'{key}=?' for key in values)} WHERE id=?",
                        (*[int(value) for value in values.values()], scenario_id))
-    return ok(scenario(svc, scenario_id))
+    return ok(scenario(svc, scenario_id, getattr(getattr(request.app.state, "cloud_policy", None), "origin", "")))
 
 
 @router.get("/demo-shop/assets/{filename}")

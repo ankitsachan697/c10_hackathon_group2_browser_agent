@@ -50,3 +50,34 @@ test("a late response from the previous run cannot replace the queued rerun", as
   await act(async () => { finishOld(new Response(JSON.stringify({ data: { id: "run-old", status: "PASSED" } }))); });
   expect(screen.getByText("Run run-new")).toBeInTheDocument();
 });
+
+test("rerun button follows accepted run status until completion instead of reverting after POST", async () => {
+  let resolveSubmit!: (response: Response) => void;
+  let nextStatus = "QUEUED";
+  let poll!: () => void;
+  const realInterval = window.setInterval.bind(window);
+  vi.spyOn(window, "setInterval").mockImplementation(((callback: () => void, delay: number) => {
+    if (delay === 1800) poll = callback;
+    return realInterval(callback, delay);
+  }) as typeof window.setInterval);
+  vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo, init?: RequestInit) => {
+    if (init?.method === "POST") return new Promise<Response>(resolve => { resolveSubmit = resolve; });
+    return new Response(JSON.stringify({ data: { id: String(input).endsWith("run-new") ? "run-new" : "run1", status: String(input).endsWith("run-new") ? nextStatus : "PASSED", attempt_count: 1 } }));
+  }));
+  render(<RunDetailPage params={Promise.resolve({ id: "run1" })}/>);
+  const button = await screen.findByRole("button", { name: "Run current script" });
+  fireEvent.click(button);
+  expect(button).toHaveAttribute("data-execution-state", "STARTING");
+  expect(button).toBeDisabled();
+  await act(async () => resolveSubmit(new Response(JSON.stringify({ data: { id: "run-new", status: "QUEUED", attempt_count: 0 } }))));
+  await waitFor(() => expect(button).toHaveAttribute("data-execution-state", "QUEUED"));
+  expect(screen.getByRole("button", { name: "Run this version" })).toBeDisabled();
+  for (const state of ["RUNNING", "REPAIRING", "RETRYING", "PASSED_AFTER_REPAIR"]) {
+    nextStatus = state;
+    await act(async () => poll());
+    await waitFor(() => expect(button).toHaveAttribute("data-execution-state", state));
+  }
+  expect(button).toBeEnabled();
+  expect(button).toHaveTextContent("Passed after repair");
+  vi.restoreAllMocks();
+});

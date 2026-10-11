@@ -85,7 +85,7 @@ def _expectations_preserved(original: str, repaired: str) -> bool:
 class RunOrchestrator:
     def __init__(self, database: Database, runner: Any, agents: Any, timeout_seconds: int, credential_vault: Any = None,
                  visual_review: VisualReview | None = None, browser_location: str = "local",
-                 companion_registry: Any = None, cdp_relay: Any = None, relay_base_url: str | None = None):
+                 companion_registry: Any = None, cdp_relay: Any = None, relay_base_url: str | None = None, cloud_jobs=None):
         self.database = database
         self.runner = runner
         self.agents = agents
@@ -102,6 +102,7 @@ class RunOrchestrator:
         self.relay_base_url = relay_base_url
         self._active: set[str] = set()
         self._guard = asyncio.Lock()
+        self.cloud_jobs = cloud_jobs
 
     @staticmethod
     def _now() -> str:
@@ -211,7 +212,17 @@ class RunOrchestrator:
                 raise RunOverlapError(f"A run is already active for {scope}")
             self._active.add(scope)
 
-    async def run_journey(
+    async def run_journey(self, journey_id, trigger, **options):
+        if self.cloud_jobs:
+            try:
+                async with self.cloud_jobs.job(f"journey:{journey_id}"):
+                    return await self._run_journey(journey_id, trigger, **options)
+            except TimeoutError:
+                self.recover_interrupted()
+                raise
+        return await self._run_journey(journey_id, trigger, **options)
+
+    async def _run_journey(
         self,
         journey_id: str,
         trigger: TriggerSource | str,
@@ -284,6 +295,8 @@ class RunOrchestrator:
             else:
                 emit("system", "browser.target", {"location": self.browser_location, "headed": headed})
             env_vars: dict[str, str] = {}
+            if getattr(self.runner, "requires_target_url", False):
+                browser_kwargs["target_url"] = journey["target_url"]
             if journey.get("credential_ciphertext"):
                 if not self.credential_vault:
                     return self._finish(run["id"], {"status": RunStatus.NEEDS_ATTENTION.value, "final_decision": "Credential vault unavailable"})
@@ -309,7 +322,7 @@ class RunOrchestrator:
                         run_dir = Path(result.get("run_dir") or "")
                         screenshots = [str(run_dir / name) for name in result.get("screenshots", [])
                                        if isinstance(name, str) and Path(name).name == name]
-                        visual = await asyncio.to_thread(
+                        visual = await (self.cloud_jobs.run_sync if self.cloud_jobs else asyncio.to_thread)(
                             self.visual_review.review, journey_id, run["id"], screenshots,
                             passed=changes["status"] in {RunStatus.PASSED.value, RunStatus.PASSED_AFTER_REPAIR.value},
                         )
@@ -378,7 +391,7 @@ class RunOrchestrator:
             emit("agent", "repair.started", {"agent_id": configured_agent_id, "category": decision.category})
             repair_started = time.monotonic()
             try:
-                repair = await asyncio.to_thread(self.agents.diagnose_and_repair, packet)
+                repair = await (self.cloud_jobs.run_sync if self.cloud_jobs else asyncio.to_thread)(self.agents.diagnose_and_repair, packet)
             except Exception as error:
                 error_code = str(getattr(error, "code", type(error).__name__))
                 self._record_agent_invocation(run["id"], configured_agent_id, "FAILED", int((time.monotonic() - repair_started) * 1000), error_code)

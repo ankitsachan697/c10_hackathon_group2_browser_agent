@@ -25,13 +25,14 @@ except ImportError:
 
 
 class GenerationCoordinator:
-    def __init__(self, database: Database, agents: Any, orchestrator: Any, credential_vault: Any):
+    def __init__(self, database: Database, agents: Any, orchestrator: Any, credential_vault: Any, cloud_jobs=None):
         self.database = database
         self.agents = agents
         self.orchestrator = orchestrator
         self.credential_vault = credential_vault
         self.events = EventStore(database)
         self._tasks: set[asyncio.Task] = set()
+        self.cloud_jobs = cloud_jobs
 
     @staticmethod
     def _now() -> str:
@@ -65,12 +66,18 @@ class GenerationCoordinator:
                 raise ValueError("Credential vault is unavailable")
             payload["credential_ciphertext"] = self.credential_vault.encrypt(str(username), str(password))
         operation_id, now = f"gen_{uuid.uuid4().hex}", self._now()
-        with self.database.transaction() as connection:
-            connection.execute(
-                "INSERT INTO generation_operations(id,idempotency_key,status,request_json,created_at,updated_at) VALUES (?,?,?,?,?,?)",
-                (operation_id, idempotency_key, "QUEUED", json.dumps(payload), now, now),
-            )
-        self.events.append("operation", operation_id, "system", "generation.queued", {"name": payload.get("name", "")})
+        if self.cloud_jobs:
+            self.cloud_jobs.reserve(operation_id)
+        try:
+            with self.database.transaction() as connection:
+                connection.execute(
+                    "INSERT INTO generation_operations(id,idempotency_key,status,request_json,created_at,updated_at) VALUES (?,?,?,?,?,?)",
+                    (operation_id, idempotency_key, "QUEUED", json.dumps(payload), now, now),
+                )
+            self.events.append("operation", operation_id, "system", "generation.queued", {"name": payload.get("name", "")})
+        except BaseException:
+            if self.cloud_jobs: self.cloud_jobs.release(operation_id)
+            raise
         return self.get(operation_id)
 
     def schedule(self, operation_id: str) -> None:
@@ -79,6 +86,11 @@ class GenerationCoordinator:
         task.add_done_callback(self._tasks.discard)
 
     def recover(self) -> None:
+        if self.cloud_jobs:
+            with self.database.transaction() as connection:
+                connection.execute("UPDATE generation_operations SET status='FAILED',error_code='INTERRUPTED',error_message='Cloud session interrupted; review before submitting again',updated_at=? WHERE status IN ('QUEUED','RUNNING')", (self._now(),))
+            self.cloud_jobs.active_job = None
+            return
         with self.database.connect() as connection:
             queued = [row[0] for row in connection.execute("SELECT id FROM generation_operations WHERE status='QUEUED'")]
             connection.execute(
@@ -91,6 +103,22 @@ class GenerationCoordinator:
             self.schedule(operation_id)
 
     async def execute(self, operation_id: str) -> None:
+        if self.cloud_jobs:
+            value = self.get(operation_id)
+            if not value or value["status"] != "QUEUED":
+                return
+            try:
+                async with self.cloud_jobs.job(operation_id, reserved=True):
+                    return await self._execute(operation_id)
+            except TimeoutError:
+                with self.database.transaction() as connection:
+                    connection.execute("UPDATE generation_operations SET status='FAILED',error_code='JOB_DEADLINE',error_message='Cloud job reached its ten-minute budget; review evidence before rerunning',updated_at=? WHERE id=?", (self._now(), operation_id))
+                self.orchestrator.recover_interrupted()
+                self.events.append("operation", operation_id, "system", "generation.failed", {"code": "JOB_DEADLINE"})
+                return
+        return await self._execute(operation_id)
+
+    async def _execute(self, operation_id: str) -> None:
         with self.database.transaction() as connection:
             row = connection.execute("SELECT * FROM generation_operations WHERE id=?", (operation_id,)).fetchone()
             if not row or row["status"] != "QUEUED":
@@ -99,7 +127,7 @@ class GenerationCoordinator:
             request = json.loads(row["request_json"])
         self.events.append("operation", operation_id, "agent", "generation.started", {"agent_id": getattr(self.agents.settings, "n8n_discovery_agent_id", None)} if hasattr(self.agents, "settings") else {})
         try:
-            generated = await asyncio.to_thread(
+            generated = await (self.cloud_jobs.run_sync if self.cloud_jobs else asyncio.to_thread)(
                 self.agents.generate_flow_script,
                 url=request["target_url"], task_objective=request.get("objective", ""),
                 credentials_meta={"has_auth": request["has_auth"]}, offline=bool(request.get("offline", False)),

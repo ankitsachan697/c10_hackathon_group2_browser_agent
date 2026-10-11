@@ -59,6 +59,23 @@ def test_initial_cloud_release_blocks_browser_and_agent_execution(monkeypatch, t
             assert response.json()["error"]["code"] == "CLOUD_EXECUTION_PENDING"
 
 
+def test_verified_worker_enables_only_admission_guarded_headless_routes(monkeypatch, tmp_path):
+    from backend.cloud_policy import CloudPolicy
+    from backend.cloud_auth import CloudAuthMiddleware
+    cloud_env(monkeypatch, tmp_path)
+    app = FastAPI()
+    app.add_middleware(CloudAuthMiddleware, policy=CloudPolicy.from_env(), execution_ready=True)
+    safe = ["/api/operations/generations", "/api/journeys/jrn_fixture/run", "/api/runs/run_fixture/rerun"]
+    unsafe = ["/api/execute-script", "/api/autonomous-run", "/api/journeys/generate", "/api/projects/proj_fixture/run"]
+    for path in safe + unsafe: app.post(path)(lambda: {"handled": True})
+    with TestClient(app) as client:
+        for path in safe:
+            assert client.post(path, headers={"x-studio-control": "synthetic-controller-secret-32-bytes"}).status_code == 200
+            assert client.post(path).status_code == 401
+        for path in unsafe:
+            assert client.post(path, headers={"x-studio-control": "synthetic-controller-secret-32-bytes"}).status_code == 503
+
+
 def test_cloud_start_fails_closed_without_management_secret(monkeypatch, tmp_path):
     from backend.cloud_policy import CloudPolicy
     cloud_env(monkeypatch, tmp_path)
