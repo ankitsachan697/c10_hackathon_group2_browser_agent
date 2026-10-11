@@ -60,6 +60,14 @@ class VisualReview:
                 "tolerance_threshold": self.tolerance_percent,
                 "diff_path": str(diff_path),
             }
+        evidence = self.artifacts_dir / "visual_evidence" / run_id
+        if not evidence.resolve().is_relative_to(self.artifacts_dir):
+            raise ValueError("Invalid visual evidence path")
+        evidence.mkdir(parents=True, exist_ok=True)
+        for source, name in ((baseline, "baseline.png"), (candidate, "current.png")):
+            destination = evidence / name
+            shutil.copyfile(source, destination)
+            result["baseline_path" if name == "baseline.png" else "candidate_path"] = str(destination)
         settings = getattr(self.agents, "settings", None)
         if getattr(settings, "enable_n8n_visual", False):
             summary = {key: result[key] for key in (

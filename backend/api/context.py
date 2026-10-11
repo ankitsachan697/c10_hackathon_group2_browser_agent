@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 from fastapi import Request
@@ -18,6 +18,7 @@ class AppServices:
     generation: Any = None
     companions: Any = None
     relay: Any = None
+    run_tasks: set[Any] = field(default_factory=set)
 
 
 def services(request: Request) -> AppServices:

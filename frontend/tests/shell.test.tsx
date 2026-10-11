@@ -9,6 +9,8 @@ beforeEach(() => vi.stubGlobal("fetch", vi.fn(async () => { throw new TypeError(
 test("renders branded navigation and service health", () => {
   render(<AppShell><div>Workspace</div></AppShell>);
   expect(screen.getByAltText("Outskill")).toBeInTheDocument();
+  expect(screen.getByText("Group2")).toBeInTheDocument();
+  expect(screen.getByRole("navigation")).toHaveTextContent("Demo lab");
   expect(screen.getByRole("navigation")).toHaveTextContent("Overview");
   expect(screen.getByRole("navigation")).toHaveTextContent("Projects");
   expect(screen.getByText("Runner")).toBeInTheDocument();

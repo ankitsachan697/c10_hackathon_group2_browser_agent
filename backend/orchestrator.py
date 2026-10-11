@@ -243,18 +243,22 @@ class RunOrchestrator:
                         )
                     except Exception as error:
                         visual = {"status": "ERROR", "reason": type(error).__name__}
-                    diff_value = visual.pop("diff_path", None)
-                    if diff_value:
-                        diff = Path(diff_value).resolve()
+                    for path_key, kind, id_key in (("diff_path", "visual_diff", "diff_artifact_id"),
+                                                  ("baseline_path", "visual_baseline", "baseline_artifact_id"),
+                                                  ("candidate_path", "visual_current", "candidate_artifact_id")):
+                        value = visual.pop(path_key, None)
+                        if not value:
+                            continue
                         visual_root = Path(self.visual_review.artifacts_dir).resolve()
+                        diff = Path(value).resolve()
                         if diff.is_relative_to(visual_root) and diff.is_file():
                             artifact = self.artifacts.create({
-                                "run_id": run["id"], "kind": "visual_diff",
+                                "run_id": run["id"], "kind": kind,
                                 "storage_path": diff.relative_to(visual_root).as_posix(),
                                 "media_type": "image/png", "size_bytes": diff.stat().st_size,
                                 "checksum": hashlib.sha256(diff.read_bytes()).hexdigest(),
                             })
-                            visual["diff_artifact_id"] = artifact["id"]
+                            visual[id_key] = artifact["id"]
                     with self.database.transaction() as connection:
                         connection.execute(
                             "INSERT OR REPLACE INTO visual_reviews(run_id,payload_json,created_at) VALUES (?,?,?)",

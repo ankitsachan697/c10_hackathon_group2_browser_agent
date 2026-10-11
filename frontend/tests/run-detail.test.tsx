@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, expect, test, vi } from "vitest";
 import RunDetailPage from "@/app/runs/[id]/page";
+vi.mock('next/navigation', () => ({ useRouter: () => ({ push: vi.fn() }) }));
 
 beforeEach(() => {
   vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo, init?: RequestInit) => {
@@ -25,8 +26,9 @@ test("shows audited timeline, evidence tabs, repair and rerun choices", async ()
   fireEvent.click(screen.getByRole("tab", { name: "Repair" }));
   expect(screen.getByText("Selector changed")).toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "Run current script" }));
+  await waitFor(() => expect(screen.getByRole("button", { name: "Run this version" })).toBeEnabled());
   fireEvent.click(screen.getByRole("button", { name: "Run this version" }));
-  await waitFor(() => expect(fetch).toHaveBeenCalledWith(expect.stringContaining("/rerun"), expect.objectContaining({ method: "POST" })));
+  await waitFor(() => expect(vi.mocked(fetch).mock.calls.filter(([, init]) => init?.method === "POST")).toHaveLength(2));
   expect(vi.mocked(fetch).mock.calls.filter(([, init]) => init?.method === "POST").map(([, init]) => JSON.parse(String(init?.body)).mode)).toEqual(["current", "snapshot"]);
   fireEvent.click(screen.getByRole("button", { name: "Delete run" }));
   expect(await screen.findByRole("dialog")).toBeInTheDocument();

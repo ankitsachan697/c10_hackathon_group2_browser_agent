@@ -12,6 +12,10 @@ export function RunVisual({ run }: { run: Run }) {
       {typeof review.reason === "string" && <p>{review.reason}</p>}
       {typeof review.diff_artifact_id === "string" && <a className="button button-secondary" href={`/api/artifacts/${review.diff_artifact_id}`} target="_blank" rel="noreferrer">Open difference image</a>}
     </div> : <p className="muted">A screenshot is needed to compare this run with a saved baseline.</p>}
+    {review && <div className="visual-triptych">{([["baseline_artifact_id", "Baseline screenshot"], ["candidate_artifact_id", "Current screenshot"], ["diff_artifact_id", "Difference heatmap"]] as const).map(([key, label]) => typeof review[key] === "string" && <figure key={key}><figcaption>{label}</figcaption><a href={`/api/artifacts/${review[key]}`} target="_blank" rel="noreferrer">
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src={`/api/artifacts/${review[key]}`} alt={label}/></a></figure>)}</div>}
+    <p className="muted">Compares the first captured screenshot against the locked baseline. Open an image to inspect it at full size.</p>
     <p className="muted">Functional test status is kept separate from visual review.</p>
   </section>;
 }

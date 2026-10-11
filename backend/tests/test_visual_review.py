@@ -72,3 +72,16 @@ def test_visual_agent_error_does_not_change_local_comparison(tmp_path):
 
     assert result["status"] == "BASELINE_CREATED"
     assert result["agent_status"] == "ERROR"
+
+
+def test_visual_retains_baseline_and_current_copies_independent_of_attempt_files(tmp_path):
+    database, journey = setup(tmp_path)
+    root = tmp_path / 'artifacts'
+    shot = tmp_path / 'result.png'
+    screenshot(shot, 'white')
+    review = VisualReview(database, root, FakeAgents(), 0.1, 0.5)
+    result = review.review(journey['id'], 'one', [str(shot)], passed=True)
+    shot.unlink()
+    assert Path(result['baseline_path']).is_file()
+    assert Path(result['candidate_path']).is_file()
+    assert Path(result['baseline_path']) != root / result['baseline_key']

@@ -55,6 +55,13 @@ export function JourneyForm() {
 
   useEffect(() => {
     void Promise.resolve().then(loadProjects);
+    void Promise.resolve().then(() => {
+      const query = new URLSearchParams(window.location.search);
+      if (query.has("target_url")) setUrl(current => current || query.get("target_url") || "");
+      if (query.has("objective")) setObjective(current => current || query.get("objective") || "");
+      if (query.has("name")) setName(current => current || query.get("name") || "");
+      if (query.has("username")) setUsername(current => current || query.get("username") || "");
+    });
     const savedId = sessionStorage.getItem(operationKey);
     if (savedId) {
       void api<GenerationOperation>(`/api/operations/${savedId}`).then(value => {

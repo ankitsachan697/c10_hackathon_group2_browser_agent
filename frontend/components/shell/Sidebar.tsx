@@ -2,10 +2,10 @@
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { CalendarClock, FolderKanban, Gauge, History, Settings } from "lucide-react";
+import { CalendarClock, FlaskConical, FolderKanban, Gauge, History, Settings } from "lucide-react";
 
-const items = [["/", "Overview", Gauge], ["/projects", "Projects", FolderKanban], ["/runs", "Runs", History], ["/schedules", "Schedules", CalendarClock], ["/settings", "Settings", Settings]] as const;
+const items = [["/", "Overview", Gauge], ["/projects", "Projects", FolderKanban], ["/runs", "Runs", History], ["/demo-lab", "Demo lab", FlaskConical], ["/schedules", "Schedules", CalendarClock], ["/settings", "Settings", Settings]] as const;
 export function Sidebar() {
   const pathname = usePathname();
-  return <aside className="sidebar"><div className="brand"><Image src="/outskill_logo.png" alt="Outskill" width={154} height={34} priority /><span>Browser Automation Studio</span></div><nav aria-label="Primary navigation">{items.map(([href, label, Icon]) => <Link key={href} href={href} className={pathname === href ? "nav-link active" : "nav-link"}><Icon size={18}/><span>{label}</span></Link>)}</nav><div className="sidebar-foot"><span className="pulse-dot"/>Ready for runs</div></aside>;
+  return <aside className="sidebar"><div className="brand"><div className="brand-identity"><Image src="/outskill_logo.png" alt="Outskill" width={154} height={34} priority /><span className="team-badge">Group2</span></div><span>Browser Automation Studio</span></div><nav aria-label="Primary navigation">{items.map(([href, label, Icon]) => <Link key={href} href={href} className={pathname === href ? "nav-link active" : "nav-link"}><Icon size={18}/><span>{label}</span></Link>)}</nav><div className="sidebar-foot"><span className="pulse-dot"/>Ready for runs</div></aside>;
 }
