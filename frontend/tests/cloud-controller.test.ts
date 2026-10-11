@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
 import { loadCloudSettings } from "@/lib/server/cloudSettings";
-import { ensureController, prepareControllerState } from "@/lib/server/controller";
+import { ensureController, prepareControllerState, getPersistentController } from "@/lib/server/controller";
 
 describe("protected cloud controller", () => {
   const env = {
@@ -45,5 +45,21 @@ describe("protected cloud controller", () => {
     await prepareControllerState({ runCommand: async (...args: unknown[]) => { calls.push(args); return { exitCode: 0 }; } });
     expect(calls[0][0]).toBe("python");
     expect(calls[0][1]).toEqual(["-c", "import pathlib; pathlib.Path('/vercel/sandbox/state').mkdir(parents=True,exist_ok=True,mode=0o700)"]);
+  });
+
+  it("a missing restore point never deletes or replaces the controller", async () => {
+    let creates = 0;
+    const sdk = { get: async () => { throw { response: { status: 410 }, json: { error: { code: "snapshot_not_found" } } }; },
+      create: async () => { creates++; return { name: "replacement" }; } };
+    await expect(getPersistentController({ name: "retained" }, sdk)).rejects.toMatchObject({ json: { error: { code: "snapshot_not_found" } } });
+    expect(creates).toBe(0);
+  });
+
+  it("creates only a genuinely absent controller", async () => {
+    let creates = 0;
+    const sdk = { get: async () => { throw { response: { status: 404 }, json: { error: { code: "not_found" } } }; },
+      create: async () => { creates++; return { name: "new" }; } };
+    expect(await getPersistentController({ name: "new" }, sdk)).toEqual({ name: "new" });
+    expect(creates).toBe(1);
   });
 });

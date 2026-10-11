@@ -37,7 +37,8 @@ test("deployment source staging excludes local history and credentials", () => {
   const root = mkdtempSync(path.join(tmpdir(), "group2-source-fixture-"));
   const output = mkdtempSync(path.join(tmpdir(), "group2-deploy-fixture-"));
   for (const directory of ["frontend/app", "frontend/components", "frontend/lib", "frontend/public", "frontend/cloud-runtime", "config", "artifacts"]) mkdirSync(path.join(root, directory), { recursive: true });
-  for (const name of ["package.json", "package-lock.json", "tsconfig.json", "next.config.ts", "next-env.d.ts", "eslint.config.mjs"]) writeFileSync(path.join(root, "frontend", name), "{}");
+  // Match a fresh tracked checkout: Next generates its ignored next-env.d.ts.
+  for (const name of ["package.json", "package-lock.json", "tsconfig.json", "next.config.ts", "eslint.config.mjs"]) writeFileSync(path.join(root, "frontend", name), "{}");
   writeFileSync(path.join(root, "config/application.json"), JSON.stringify({ cloud: target }));
   writeFileSync(path.join(root, "frontend/cloud-runtime/group2-runtime.tar.gz"), "synthetic runtime");
   writeFileSync(path.join(root, "frontend/.env.local"), "private");

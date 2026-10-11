@@ -8,6 +8,25 @@ export type ControllerHandle = { name: string; origin: string; expiresAt: string
 type Bootstrap = (settings: CloudSettings) => Promise<ControllerHandle>;
 const inflight = new Map<string, Promise<ControllerHandle>>();
 
+type PersistentOptions = Parameters<typeof Sandbox.create>[0] & { name: string };
+type PersistentSDK<T> = {
+  get: (params: PersistentOptions & { resume: true }) => Promise<T>;
+  create: (params: PersistentOptions) => Promise<T>;
+};
+export function getPersistentController(params: PersistentOptions): Promise<Sandbox>;
+export function getPersistentController<T>(params: PersistentOptions, sdk: PersistentSDK<T>): Promise<T>;
+export async function getPersistentController(params: PersistentOptions, sdk: PersistentSDK<unknown> = Sandbox): Promise<unknown> {
+  try {
+    return await sdk.get({ ...params, resume: true });
+  } catch (error) {
+    const failure = error as { response?: { status?: number }; json?: { error?: { code?: string } } };
+    if (failure.response?.status === 404 && failure.json?.error?.code === "not_found") return sdk.create(params);
+    // A failed restore, permission error, quota failure or network error must
+    // retain the existing workspace. Never delete it or initialize a new DB.
+    throw error;
+  }
+}
+
 export async function prepareControllerState(sandbox: { runCommand: (cmd: string, args: string[]) => Promise<{ exitCode: number | null }> }): Promise<void> {
   const result = await sandbox.runCommand("python", ["-c", "import pathlib; pathlib.Path('/vercel/sandbox/state').mkdir(parents=True,exist_ok=True,mode=0o700)"]);
   if (result.exitCode !== 0) throw new Error("Controller state initialization failed");
@@ -31,8 +50,8 @@ async function bootstrapController(settings: CloudSettings): Promise<ControllerH
     throw new Error("Scoped Vercel credentials are expired or lack the required job budget");
   }
   const credentials = { token, teamId: settings.teamId, projectId: settings.projectId };
-  const sandbox = await Sandbox.getOrCreate({
-    ...credentials, name: settings.controllerName, resume: true,
+  const sandbox = await getPersistentController({
+    ...credentials, name: settings.controllerName,
     image: settings.image, persistent: true, snapshotExpiration: 0,
     keepLastSnapshots: { count: 1, expiration: 0, deleteEvicted: true },
     resources: { vcpus: 1 }, ports: [8000], timeout: settings.sessionMinutes * 60_000,

@@ -49,7 +49,7 @@ export function stageDeployment(repositoryRoot, outputDir, target) {
   mkdirSync(output, { recursive: true });
   const allowed = ["frontend/app", "frontend/components", "frontend/lib", "frontend/public",
     "frontend/package.json", "frontend/package-lock.json", "frontend/tsconfig.json",
-    "frontend/next.config.ts", "frontend/next-env.d.ts", "frontend/eslint.config.mjs",
+    "frontend/next.config.ts", "frontend/eslint.config.mjs",
     "frontend/cloud-runtime/group2-runtime.tar.gz", "config/application.json"];
   for (const name of allowed) {
     const source = path.join(root, name), destination = path.join(output, name);
