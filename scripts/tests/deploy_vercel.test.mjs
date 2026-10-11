@@ -1,12 +1,19 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, mkdirSync, writeFileSync, existsSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, existsSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { configureDeployment, stageDeployment } from "../deploy_vercel.mjs";
 
 const target = { teamId: "team_vX4hl0qHhzt1aKFxd5wVJ7bU", teamSlug: "testing-group1", projectId: "prj_AKsTYfYD7rX5t29TUCn440Yr6Dsq", projectName: "outskill-group2-browser-studio" };
 const env = { VERCEL_TOKEN: "synthetic-private-vercel", N8N_BEARER_TOKEN: "synthetic-private-n8n", GITHUB_SHA: "a".repeat(40) };
+
+test("health verification saves curl response bodies separately from CLI status text", () => {
+  const workflow = readFileSync(new URL("../../.github/workflows/deploy-vercel.yml", import.meta.url), "utf8");
+  assert.match(workflow, /--output "\$RUNNER_TEMP\/preview-health\.json"/);
+  assert.match(workflow, /--output "\$RUNNER_TEMP\/production-health\.json"/);
+  assert.doesNotMatch(workflow, /> "\$RUNNER_TEMP\/(preview|production)-health\.json"/);
+});
 
 test("deployment refuses a paid account before mutation", async () => {
   const calls = [];
