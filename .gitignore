@@ -41,3 +41,7 @@ test_vid_out/
 test_*_dir/
 .DS_Store
 *.log
+
+# Generated cloud runtime and Vercel account linkage
+.cloud-runtime/
+.vercel/
