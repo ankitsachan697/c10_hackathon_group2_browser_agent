@@ -169,3 +169,32 @@ test("shows a retryable backend error without an unhandled rejection", async () 
   await userEvent.click(screen.getByRole("button", { name: "Retry projects" }));
   expect(await screen.findByRole("option", { name: "Recovered" })).toBeInTheDocument();
 });
+
+test("submission reveals and focuses Live Activity before the API responds", async () => {
+  let resolveSubmission: (value: Response) => void = () => undefined;
+  vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo) => {
+    if (String(input) === "/api/operations/generations") return await new Promise<Response>(resolve => { resolveSubmission = resolve; });
+    if (String(input).includes("/events")) return envelope([]);
+    if (String(input) === "/api/operations/new") return envelope({ id: "new", status: "RUNNING", run_id: null });
+    return envelope([{ id: "p1", name: "Web", description: "" }]);
+  }));
+  const scroll = vi.fn();
+  const previous = HTMLElement.prototype.scrollIntoView;
+  HTMLElement.prototype.scrollIntoView = scroll;
+  try {
+    render(<JourneyCreatePage/>);
+    await screen.findByRole("option", { name: "Web" });
+    fireEvent.change(screen.getByLabelText("Journey name"), { target: { value: "Login" } });
+    fireEvent.change(screen.getByLabelText("Target URL"), { target: { value: "https://example.test/login" } });
+    fireEvent.change(screen.getByLabelText("Objective"), { target: { value: "Verify login" } });
+    await userEvent.click(screen.getByRole("button", { name: "Verify & record live" }));
+    const activity = screen.getByRole("region", { name: "Live activity" });
+    expect(activity).toHaveFocus();
+    expect(scroll).toHaveBeenCalledTimes(1);
+    expect(activity).toHaveAttribute("aria-busy", "true");
+    expect(screen.getByRole("status", { name: "Browser activity" })).toHaveTextContent(/Starting verification/);
+    resolveSubmission(envelope({ id: "new", status: "RUNNING", run_id: null }, 202));
+    await screen.findByText("Waiting for discovery to identify the flow.");
+    expect(scroll).toHaveBeenCalledTimes(1);
+  } finally { HTMLElement.prototype.scrollIntoView = previous; }
+});

@@ -35,6 +35,7 @@ export function JourneyForm() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const submitKey = useRef<string | null>(null);
+  const activityRef = useRef<HTMLDivElement>(null);
   const operationId = operation?.id;
   const operationStatus = operation?.status;
   const operationActive = Boolean(operation && !["FAILED", "COMPLETED"].includes(operation.status));
@@ -42,6 +43,13 @@ export function JourneyForm() {
   const runTerminal = ["PASSED", "PASSED_AFTER_REPAIR", "NEEDS_ATTENTION", "FAILED"].includes(run?.status ?? "");
   const operationFeed = useActivityEvents("operation", operationId, operationStatus === "FAILED" || operationStatus === "COMPLETED");
   const runFeed = useActivityEvents("run", runId, runTerminal);
+
+  useEffect(() => {
+    if (!busy) return;
+    const activity = activityRef.current;
+    activity?.focus({ preventScroll: true });
+    activity?.scrollIntoView?.({ behavior: window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth", block: "start" });
+  }, [busy]);
 
   const loadProjects = useCallback(async () => {
     setProjectsLoading(true); setProjectsError("");
@@ -167,9 +175,9 @@ export function JourneyForm() {
         <div className="wizard-actions">{operationActive ? <a className="muted" href="#live-verification">A verification is running. View its progress below.</a> : !canSubmit ? <span className="muted">Choose a project and enter the objective, journey name, and target URL.</span> : null}<ExecutionButton type="submit" label="Verify & record live" status={busy ? "STARTING" : run?.status ?? (operationActive ? operation?.status : operation?.status === "FAILED" ? "FAILED" : "")} disabled={!canSubmit || busy || operationActive}/></div>
       </form>
     </Card>
-    {operation && <div id="live-verification" className="verification-session"><Card><div className="operation-heading"><p className="eyebrow">Live activity</p><div className="run-actions">{operation.run_id && <Link className="button primary-link" href={`/runs/${operation.run_id}`}>Open run</Link>}{["FAILED", "COMPLETED"].includes(operation.status) && <Button type="button" className="button-secondary" onClick={startAnother}>Create another journey</Button>}</div></div>
-      {operation.error_message && <p className="form-error" role="alert">{operation.error_message}</p>}
-      <LiveRunProgress operationEvents={operationFeed.events} runEvents={runFeed.events} run={run ?? undefined} runStatus={operation.status === "FAILED" ? "FAILED" : undefined}/>
+    {(busy || operation) && <div ref={activityRef} id="live-verification" className="verification-session" role="region" aria-label="Live activity" aria-busy={busy || operationActive} tabIndex={-1}><Card><div className="operation-heading"><p className="eyebrow">Live activity</p><div className="run-actions">{operation?.run_id && <Link className="button primary-link" href={`/runs/${operation.run_id}`}>Open run</Link>}{operation && ["FAILED", "COMPLETED"].includes(operation.status) && <Button type="button" className="button-secondary" onClick={startAnother}>Create another journey</Button>}</div></div>
+      {operation?.error_message && <p className="form-error" role="alert">{operation.error_message}</p>}
+      <LiveRunProgress operationEvents={busy ? [] : operationFeed.events} runEvents={busy ? [] : runFeed.events} run={busy ? undefined : run ?? undefined} runStatus={busy ? "STARTING" : operation?.status}/>
       {operationFeed.error && <p className="form-error" role="alert">{operationFeed.error}</p>}
       {runFeed.error && <p className="form-error" role="alert">{runFeed.error}</p>}
     </Card></div>}

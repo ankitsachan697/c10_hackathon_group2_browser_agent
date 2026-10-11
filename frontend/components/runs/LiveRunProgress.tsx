@@ -1,10 +1,12 @@
 "use client";
 
 import { useId, useState } from "react";
+import { LoaderCircle } from "lucide-react";
 import type { ActivityEvent, Run } from "@/lib/types";
 import { RunMedia } from "@/components/runs/RunMedia";
 import { RunScript } from "@/components/runs/RunScript";
 import { RunVisual } from "@/components/runs/RunVisual";
+import { activeExecutionStates } from "@/components/ui/ExecutionButton";
 
 type Props = { operationEvents: ActivityEvent[]; runEvents: ActivityEvent[]; runStatus?: string; run?: Run };
 const views = [
@@ -27,9 +29,17 @@ export function LiveRunProgress({ operationEvents, runEvents, runStatus, run }: 
   const consoleEvents = [...operationEvents, ...runEvents].sort((a, b) => Date.parse(a.created_at) - Date.parse(b.created_at) || a.seq - b.seq);
   const outcome = status === "PASSED" || status === "PASSED_AFTER_REPAIR" ? "First run passed" : status === "NEEDS_ATTENTION" || status === "FAILED" ? "Needs attention" : "Verification in progress";
   const selectedView = !run && view !== "steps" && view !== "console" ? "steps" : view;
+  const active = activeExecutionStates.includes(status ?? "");
+  const waiting = active && actions.length === 0;
+  const waitingLabel = status === "STARTING" ? "Starting verification…"
+    : run ? "Preparing remote Chromium and starting the recording…"
+    : discovery ? "Discovery finished. Preparing the first browser run…"
+    : status === "QUEUED" ? "Verification queued. Waiting for discovery to start…"
+    : "Discovery is inspecting the target and identifying the flow…";
 
   return <section className="live-progress" aria-label="Live verification">
-    <div className="live-progress-head"><div><p className="eyebrow">Live verification</p><h2>{outcome}</h2><p>Follow the browser actions and inspect the saved evidence.</p></div><span className="run-state">{status?.replaceAll("_", " ") ?? "Waiting for run"}</span></div>
+    <div className="live-progress-head"><div><p className="eyebrow">Live verification</p><h2>{outcome}</h2><p>Follow the browser actions and inspect the saved evidence.</p></div><span className="run-state">{active && <span className="execution-dot" aria-hidden="true"/>}{status?.replaceAll("_", " ") ?? "Waiting for run"}</span></div>
+    {waiting && <div className="activity-loading" role="status" aria-label="Browser activity"><LoaderCircle size={20} aria-hidden="true" className="execution-spinner"/><div><strong>{waitingLabel}</strong><p>Live actions will appear here automatically. The recording becomes available after the browser closes.</p></div></div>}
     <div className="live-switch" role="tablist" aria-label="Verification views">{views.map(({ key, label }, index) => <button
       key={key} id={`${tabId}-${key}`} type="button" role="tab"
       aria-selected={selectedView === key} aria-controls={`${tabId}-panel`}

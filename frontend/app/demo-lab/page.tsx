@@ -1,15 +1,19 @@
 "use client";
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Copy, ExternalLink, FlaskConical, Plus } from "lucide-react";
 import { api } from "@/lib/api";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
+import { ExecutionButton } from "@/components/ui/ExecutionButton";
+import type { Journey, Run } from "@/lib/types";
 
 type Scenario = { id: string; target_path: string; target_url?: string; locator_revision: 0 | 1; visual_variant: boolean; checkout_failure: boolean };
 const objective = 'Sign in using the supplied credentials and validate "Logged In Successfully". Add one Studio Notebook to cart, open View cart, proceed to Checkout, fill Full name with "Demo Tester", Shipping email with "tester@example.test", Shipping address with "123 Example Street", then Place demo order. Assert the heading "Order confirmed" is visible. Capture screenshots at login, cart, and confirmation. Use exact accessible names for form labels and buttons, and a 5 second default action timeout.';
 
 export default function DemoLabPage() {
+  const router = useRouter();
   const [scenarios, setScenarios] = useState<Scenario[]>([]);
   const [selected, setSelected] = useState("");
   const [origin, setOrigin] = useState("");
@@ -17,6 +21,10 @@ export default function DemoLabPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [journeys, setJourneys] = useState<Journey[]>([]);
+  const [journeyId, setJourneyId] = useState("");
+  const [replaying, setReplaying] = useState(false);
+  const [previewVersion, setPreviewVersion] = useState(0);
   useEffect(() => {
     let active = true;
     void Promise.resolve().then(() => { if (active) setOrigin(window.location.origin); });
@@ -25,17 +33,37 @@ export default function DemoLabPage() {
   }, []);
   const current = scenarios.find(item => item.id === selected);
   const target = current ? current.target_url || origin + current.target_path : "";
+  useEffect(() => {
+    if (!target) return;
+    let active = true;
+    void api<Journey[]>("/api/journeys").then(values => {
+      if (!active) return;
+      const matching = values.filter(item => item.active && item.script?.trim() && item.target_url.replace(/\/$/, "") === target.replace(/\/$/, ""));
+      setJourneys(matching);
+      setJourneyId(matching[0]?.id ?? "");
+    }).catch(failure => { if (active) setError(failure instanceof Error ? failure.message : "Saved journeys unavailable"); });
+    return () => { active = false; };
+  }, [target]);
+  const replay = async () => {
+    if (!journeys.some(item => item.id === journeyId && item.target_url.replace(/\/$/, "") === target.replace(/\/$/, "")) || replaying || busy) return;
+    setReplaying(true); setError("");
+    try {
+      const run = await api<Run>(`/api/journeys/${journeyId}/run`, { method: "POST", body: JSON.stringify({ browser_mode: "headless", background: true }) });
+      router.push(`/runs/${run.id}`);
+    } catch (failure) { setError(failure instanceof Error ? failure.message : "Could not replay saved journey"); setReplaying(false); }
+  };
   const create = async () => {
+    if (busy || replaying) return;
     setBusy(true); setError(""); setNotice("");
-    try { const value = await api<Scenario>("/api/demo-lab/scenarios", { method: "POST", body: "{}" }); setScenarios(items => [value, ...items]); setSelected(value.id); }
+    try { const value = await api<Scenario>("/api/demo-lab/scenarios", { method: "POST", body: "{}" }); setScenarios(items => [value, ...items]); setSelected(value.id); setJourneys([]); setJourneyId(""); }
     catch (failure) { setError(failure instanceof Error ? failure.message : "Could not create scenario"); }
     finally { setBusy(false); }
   };
   const change = async (values: Partial<Scenario>) => {
-    if (!current || busy) return;
+    if (!current || busy || replaying) return;
     setBusy(true); setError(""); setNotice("");
     setScenarios(items => items.map(item => item.id === current.id ? { ...item, ...values } : item));
-    try { const value = await api<Scenario>(`/api/demo-lab/scenarios/${current.id}`, { method: "PATCH", body: JSON.stringify(values) }); setScenarios(items => items.map(item => item.id === value.id ? value : item)); setNotice("Target updated. Reload the shop or replay the saved journey to see the change."); }
+    try { const value = await api<Scenario>(`/api/demo-lab/scenarios/${current.id}`, { method: "PATCH", body: JSON.stringify(values) }); setScenarios(items => items.map(item => item.id === value.id ? value : item)); setPreviewVersion(version => version + 1); setNotice("Target updated. Replay the saved journey to test the change."); }
     catch (failure) { setScenarios(items => items.map(item => item.id === current.id ? current : item)); setError(failure instanceof Error ? failure.message : "Could not update target"); }
     finally { setBusy(false); }
   };
@@ -44,18 +72,19 @@ export default function DemoLabPage() {
     catch { setError("Clipboard unavailable. Select the text and copy it manually."); }
   };
   return <div className="page demo-lab">
-    <div className="page-heading"><div><p className="eyebrow">Group2 · Hackathon playground</p><h1>Demo lab</h1><p>A real browser target for registration, login, cart, checkout, repair, and visual comparisons.</p></div><Button onClick={() => void create()} disabled={busy || loading} className="primary-link"><Plus size={15}/>New scenario</Button></div>
+    <div className="page-heading"><div><p className="eyebrow">Group2 · Hackathon playground</p><h1>Demo lab</h1><p>A real browser target for registration, login, cart, checkout, repair, and visual comparisons.</p></div><Button onClick={() => void create()} disabled={busy || loading || replaying} className="primary-link"><Plus size={15}/>New scenario</Button></div>
     {error && <p role="alert" className="form-error">{error}</p>}{notice && <p role="status" className="muted">{notice}</p>}
     <Card><div className="demo-heading"><FlaskConical size={20}/><div><h2>1. Prepare a clean target</h2><p className="muted">Each scenario has independent switches. Nothing is a real purchase; use synthetic data only.</p></div></div>
-      {scenarios.length ? <div className="form-grid"><label>Demo scenario<select value={selected} onChange={event => setSelected(event.target.value)}>{scenarios.map(item => <option key={item.id} value={item.id}>Scenario {item.id.slice(0, 8)}</option>)}</select></label><label>Target URL<input readOnly value={target}/></label></div> : <p className="muted">Create a scenario to get your own deployable shop URL.</p>}
+      {scenarios.length ? <div className="form-grid"><label>Demo scenario<select disabled={busy || replaying} value={selected} onChange={event => { setSelected(event.target.value); setJourneyId(""); setJourneys([]); }}>{scenarios.map(item => <option key={item.id} value={item.id}>Scenario {item.id.slice(0, 8)}</option>)}</select></label><label>Target URL<input readOnly value={target}/></label></div> : <div className="demo-empty"><p>Create a demo target first to open the shop and enable the change-target controls below.</p><Button onClick={() => void create()} disabled={busy || loading}>Create demo target</Button></div>}
       {current && <div className="run-actions demo-links"><Button onClick={() => void copy(target)}><Copy size={14}/>Copy URL</Button><a className="button button-secondary" href={target} target="_blank" rel="noreferrer"><ExternalLink size={14}/>Open demo shop</a><Link className="button primary-link" href={`/journeys/new?${new URLSearchParams({ target_url: target, objective, name: "Demo shop checkout", username: "demo@example.test" })}`}>Create demo journey</Link></div>}
+      {current && <details className="demo-preview" open><summary>Demo shop preview</summary><p className="muted">Try the synthetic flow here, or open the shop in a separate tab. This preview is not an automation run.</p><iframe key={`${selected}-${previewVersion}`} title="Demo shop preview" src={target} referrerPolicy="no-referrer" sandbox="allow-scripts allow-forms allow-same-origin"/></details>}
     </Card>
     <Card><h2>2. Verify and save a baseline</h2><p className="muted">Use n8n discovery for the first journey. Replay saved scripts for every subsequent run.</p><label className="objective-editor">Suggested objective<textarea readOnly rows={5} value={objective}/></label><div className="run-actions demo-links"><Button onClick={() => void copy(objective)}><Copy size={14}/>Copy objective</Button><span className="muted">Synthetic account: <code>demo@example.test</code> · Password: <code>DemoPass123!</code></span></div><p className="muted">For registration, click Register, supply a new synthetic email and a password of at least 8 characters, then sign in. Accounts reset when the page reloads.</p></Card>
-    <Card><h2>3. Change the target, then replay</h2><div className="demo-switches">
-      <label><input type="checkbox" checked={Boolean(current?.locator_revision)} disabled={!current || busy} onChange={event => void change({ locator_revision: event.target.checked ? 1 : 0 })}/><span><strong>Change checkout locator</strong><small>Checkout becomes Continue to shipping with a new ID. A stale saved locator should invoke repair once.</small></span></label>
-      <label><input type="checkbox" checked={current?.visual_variant ?? false} disabled={!current || busy} onChange={event => void change({ visual_variant: event.target.checked })}/><span><strong>Apply visual redesign</strong><small>Change colors, borders, and spacing without changing the purchase flow. The locked baseline stays intact.</small></span></label>
-      <label><input type="checkbox" checked={current?.checkout_failure ?? false} disabled={!current || busy} onChange={event => void change({ checkout_failure: event.target.checked })}/><span><strong>Reject checkout</strong><small>A genuine product failure. The confirmation assertion must fail and require attention—not be auto-healed.</small></span></label>
-    </div><div className="run-actions demo-links"><Button disabled={!current || busy} onClick={() => void change({ locator_revision: 0, visual_variant: false, checkout_failure: false })}>Reset target</Button><Link href="/runs" className="button primary-link">Open runs and replay</Link></div></Card>
+    <Card><h2>3. Change the target, then replay</h2><p className="muted">First verify a journey and save its baseline. Then change one switch and replay that saved Playwright script. Discovery does not run again.</p><div className="demo-switches">
+      <label><input type="checkbox" checked={Boolean(current?.locator_revision)} disabled={!current || busy || replaying} onChange={event => void change({ locator_revision: event.target.checked ? 1 : 0 })}/><span><strong>Change checkout locator</strong><small>Checkout becomes Continue to shipping with a new ID. A stale saved locator should invoke repair once.</small></span></label>
+      <label><input type="checkbox" checked={current?.visual_variant ?? false} disabled={!current || busy || replaying} onChange={event => void change({ visual_variant: event.target.checked })}/><span><strong>Apply visual redesign</strong><small>Change colors, borders, and spacing without changing the purchase flow. The locked baseline stays intact.</small></span></label>
+      <label><input type="checkbox" checked={current?.checkout_failure ?? false} disabled={!current || busy || replaying} onChange={event => void change({ checkout_failure: event.target.checked })}/><span><strong>Reject checkout</strong><small>A genuine product failure. The confirmation assertion must fail and require attention—not be auto-healed.</small></span></label>
+    </div>{journeys.length > 0 ? <label className="demo-replay-picker">Saved journey<select aria-label="Saved journey" value={journeyId} disabled={busy || replaying} onChange={event => setJourneyId(event.target.value)}>{journeys.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label> : <p className="muted">No saved journey for this target yet. Use Create demo journey above and finish its first verification.</p>}<div className="run-actions demo-links"><Button disabled={!current || busy || replaying} onClick={() => void change({ locator_revision: 0, visual_variant: false, checkout_failure: false })}>Reset target</Button><ExecutionButton label="Replay saved journey" status={replaying ? "STARTING" : ""} disabled={!journeyId || busy || replaying} onClick={() => void replay()}/><Link href="/runs" className="button button-secondary">Open runs and replay</Link></div></Card>
     <p className="muted">Local Docker reaches loopback URLs through its host gateway. Cloud scenarios use the public demo endpoint on the browser backend, so Vercel login protection does not block the worker. Use Headless for remote verification.</p>
   </div>;
 }

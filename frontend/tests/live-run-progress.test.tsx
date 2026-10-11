@@ -28,3 +28,21 @@ test("keeps planned discovery separate from confirmed actions across attempts", 
   fireEvent.click(screen.getByRole("tab", { name: "Live console" }));
   expect(screen.getByText(/password=\[REDACTED\]/)).toBeInTheDocument();
 });
+
+test("active discovery shows a loader until an observed action arrives", () => {
+  const { rerender } = render(<LiveRunProgress operationEvents={[]} runEvents={[]} runStatus="RUNNING"/>);
+  expect(screen.getByRole("status", { name: "Browser activity" })).toHaveTextContent(/Discovery is inspecting/);
+  expect(screen.getByRole("status", { name: "Browser activity" }).querySelector(".execution-spinner")).not.toBeNull();
+  rerender(<LiveRunProgress operationEvents={[]} runEvents={[event(1, "action.started", { action: "navigate" })]} runStatus="RUNNING"/>);
+  expect(screen.queryByRole("status", { name: "Browser activity" })).not.toBeInTheDocument();
+});
+
+test("completed discovery without planned labels advances the preparation stage", () => {
+  render(<LiveRunProgress operationEvents={[event(1, "generation.completed", { discovered_steps: [] }, "agent", "operation")]} runEvents={[]} runStatus="RUNNING"/>);
+  expect(screen.getByRole("status", { name: "Browser activity" })).toHaveTextContent(/Discovery finished/);
+});
+
+test.each(["FAILED", "NEEDS_ATTENTION", "PASSED"])("%s never shows a waiting loader", status => {
+  render(<LiveRunProgress operationEvents={[]} runEvents={[]} runStatus={status}/>);
+  expect(screen.queryByRole("status", { name: "Browser activity" })).not.toBeInTheDocument();
+});
