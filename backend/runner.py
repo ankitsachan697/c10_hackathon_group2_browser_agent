@@ -425,9 +425,25 @@ def _worker_target_url(url):
 
 from playwright.sync_api import Page as _WorkerPage
 _worker_original_goto = _WorkerPage.goto
+_worker_last_page = None
+_worker_failure_captured = False
 def _worker_goto(self, url, *args, **kwargs):
+    global _worker_last_page
+    _worker_last_page = self
     return _worker_original_goto(self, _worker_target_url(url), *args, **kwargs)
 _WorkerPage.goto = _worker_goto
+
+def _worker_capture_failure():
+    global _worker_failure_captured
+    if _worker_failure_captured or _worker_last_page is None or _worker_last_page.is_closed():
+        return
+    _worker_failure_captured = True
+    # Capture while the failing page still exists, before generated finally blocks close it.
+    # Inputs are masked in pixels and cleared from the DOM evidence, not sent to agents.
+    _worker_last_page.evaluate("document.querySelectorAll('input,textarea').forEach(el => {{ el.removeAttribute('value'); el.value=''; if(el.tagName==='TEXTAREA')el.textContent=''; }})")
+    with open(os.path.join(run_dir, "dom_snapshot.html"), "w", encoding="utf-8") as evidence:
+        evidence.write(_worker_last_page.content())
+    _worker_last_page.screenshot(path=os.path.join(run_dir, "failure.png"), mask=[_worker_last_page.locator("input,textarea,[contenteditable=true]")])
 
 def _connect_or_launch(browser_type, *args, **kwargs):
     endpoint = os.environ.get("PLAYWRIGHT_CDP_ENDPOINT")

@@ -1,0 +1,37 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {"title": "Group2 Browser Automation Studio", "locale": "en", "repository":{"url":"https://github.com/ankitsachan697/c10_hackathon_group2_browser_agent","revision":"5e4c7fbbe2d7a1ee3e3de375881aedfc9be1c749"}, "quality_profile": "showcase", "visual_preset": "blueprint", "animation": "trace", "views": [
+    {"id":"first-run","label":"Objective to verified script","focus":["studio","api","agents","worker","target"],"note":"Discovery returns a plan and Python script; Playwright performs and records the actual actions."},
+    {"id":"repair","label":"Failure and single retry","focus":["api","agents","worker","evidence"],"note":"A bounded failure packet invokes diagnosis and repair. One verified retry; genuine assertions require attention."},
+    {"id":"headed","label":"Hosted Studio, local Chromium","focus":["studio","api","companion","target"],"note":"Device pairing, outbound relay, per-run approval. No public unauthenticated CDP port."},
+    {"id":"visual","label":"Locked screenshot comparison","focus":["worker","evidence","visual","agents"],"note":"Pixel comparison creates the verdict. The visual agent reviews the bounded numeric summary."}
+  ]},
+  "components": [
+    {"id":"studio","type":"frontend","label":"Studio UI","sublabel":"Next.js 16 · React","pos":[40,80],"size":[180,80],"sources":[{"path":"frontend/components/journeys/JourneyForm.tsx"},{"path":"frontend/app/demo-lab/page.tsx"},{"path":"frontend/app/api/[...path]/route.ts"}]},
+    {"id":"api","type":"backend","label":"FastAPI controller","sublabel":"Generation · run orchestration","pos":[340,80],"size":[215,80],"sources":[{"path":"backend/generation.py"},{"path":"backend/orchestrator.py"},{"path":"backend/api/runs.py"}]},
+    {"id":"agents","type":"cloud","label":"n8n Cloud agents","sublabel":"Discovery · repair · visual","pos":[750,225],"size":[205,80],"sources":[{"path":"backend/n8n_client.py"},{"path":"config/application.json"}]},
+    {"id":"worker","type":"security","label":"Playwright worker","sublabel":"Isolated Docker · Python","pos":[340,225],"size":[215,80],"sources":[{"path":"backend/runner.py"},{"path":"backend/action_events.py"},{"path":"backend/Dockerfile.runner"}]},
+    {"id":"target","type":"external","label":"Browser target","sublabel":"Demo shop or any website","pos":[40,365],"size":[180,80],"sources":[{"path":"backend/api/demo_lab.py"},{"path":"backend/demo_shop/shop.js"}]},
+    {"id":"evidence","type":"database","label":"Run evidence","sublabel":"Screenshots · video · trash","pos":[750,365],"size":[205,80],"sources":[{"path":"backend/artifact_store.py"},{"path":"frontend/components/runs/RunMedia.tsx"}]},
+    {"id":"companion","type":"security","label":"Paired local browser","sublabel":"Approved headed Chromium","pos":[40,225],"size":[180,80],"sources":[{"path":"backend/companion_registry.py"},{"path":"backend/cdp_relay.py"},{"path":"backend/api/companions.py"}]},
+    {"id":"store","type":"database","label":"SQLite state","sublabel":"Journeys · runs · events","pos":[750,80],"size":[205,80],"sources":[{"path":"backend/database.py"},{"path":"backend/event_store.py"},{"path":"backend/credential_vault.py"}]},
+    {"id":"visual","type":"backend","label":"Visual comparison","sublabel":"Locked baseline · Pixelmatch","pos":[340,365],"size":[215,80],"sources":[{"path":"backend/visual_review.py"},{"path":"backend/visual_diff.py"}]}
+  ],
+  "connections": [
+    {"from":"studio","to":"api","label":"Same-origin API","variant":"emphasis"},
+    {"from":"api","to":"agents","label":"MCP · bounded JSON","variant":"security"},
+    {"from":"api","to":"worker","label":"Saved script","variant":"emphasis","labelAt":[448,190]},
+    {"from":"worker","to":"target","label":"Real actions","variant":"emphasis"},
+    {"from":"worker","to":"evidence","label":"Recorded artifacts"},
+    {"from":"api","to":"store","label":"Persisted audit"},
+    {"from":"companion","to":"target","label":"Headed mode","variant":"security","labelAt":[130,335]},
+    {"from":"worker","to":"companion","label":"Approved CDP relay","variant":"security"},
+    {"from":"evidence","to":"visual","label":"Compare PNGs","labelAt":[604,430]}
+  ],
+  "cards": [
+    {"dot":"cyan","title":"Run lifecycle","items":["Objective → discovery → saved script → first run","On-demand, reruns and daily schedules replay scripts","Only a verified retry earns Passed after repair"]},
+    {"dot":"rose","title":"Safe failure handling","items":["Timeout/locator → bounded diagnosis → one retry","Authentication and assertion failures need attention","Secrets encrypted at rest; logs and evidence masked"]},
+    {"dot":"emerald","title":"Deployment and ownership","items":["Same-origin proxy serves the demo with Studio","Server owns SQLite, artifacts and APScheduler","Local companion connects outward after approval"]}
+  ]
+}

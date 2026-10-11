@@ -1,0 +1,141 @@
+{
+  "verified_on": "2026-10-11",
+  "capture_kind": "real-browser-real-agents",
+  "passed": true,
+  "raw_duration_seconds": 93,
+  "video": "group2-showcase.mp4",
+  "video_duration_seconds": 79.12,
+  "scenario_id": "e599a066b42d4b7f855e8987997a764b",
+  "operation_id": "gen_0ceec82b23fb4ec2ad46be864fb8d30f",
+  "journey_id": "jrn_f591316957894577b63af81316748dfc",
+  "baseline_run_id": "run_7a09032b2332499a8a76d3f789b41450",
+  "repair_run_id": "run_cb7950fe4df9463183d39b91fc6dea1c",
+  "visual_run_id": "run_c28072354189475c94ff1697346a1ff4",
+  "business_error_run_id": "run_acb8095500ef4fa0a67dcf17cca346f1",
+  "runs": {
+    "baseline": {
+      "status": "PASSED",
+      "attempt_count": 1,
+      "visual_outcome": "BASELINE_CREATED",
+      "final_decision": null
+    },
+    "repair": {
+      "status": "PASSED_AFTER_REPAIR",
+      "attempt_count": 2,
+      "visual_outcome": "MATCH",
+      "final_decision": "Verified repaired script"
+    },
+    "visual": {
+      "status": "PASSED",
+      "attempt_count": 1,
+      "visual_outcome": "DIFFERENCE",
+      "final_decision": null
+    },
+    "business_error": {
+      "status": "NEEDS_ATTENTION",
+      "attempt_count": 1,
+      "visual_outcome": "DIFFERENCE",
+      "final_decision": "Product expectations are not auto-rewritten"
+    }
+  },
+  "repair_diagnosis": {
+    "root_cause": "The cart page has no button with the accessible name \"Checkout\". The observed checkout-transition button is named \"Continue to shipping\".",
+    "failure_category": "TIMEOUT",
+    "recommended_fix": "Replace only the failed Checkout button locator with the observed \"Continue to shipping\" button locator.",
+    "diff_summary": "Changed get_by_role('button', name='Checkout', exact=True) to get_by_role('button', name='Continue to shipping', exact=True).",
+    "agent_id": "p3Sh9BmTzLMC0f8A",
+    "agent_source": "n8n"
+  },
+  "discovery_events": [
+    {
+      "seq": 1441,
+      "scope_type": "operation",
+      "scope_id": "gen_0ceec82b23fb4ec2ad46be864fb8d30f",
+      "source": "agent",
+      "kind": "generation.started",
+      "created_at": "2026-10-11T05:59:28.236855+00:00",
+      "payload": {
+        "agent_id": "QEzE1lGs9WbTU82H"
+      }
+    },
+    {
+      "seq": 1442,
+      "scope_type": "operation",
+      "scope_id": "gen_0ceec82b23fb4ec2ad46be864fb8d30f",
+      "source": "agent",
+      "kind": "generation.completed",
+      "created_at": "2026-10-11T05:59:38.538575+00:00",
+      "payload": {
+        "journey_id": "jrn_f591316957894577b63af81316748dfc",
+        "agent_id": "QEzE1lGs9WbTU82H",
+        "agent_source": "n8n Cloud Agent (ID: QEzE1lGs9WbTU82H)",
+        "discovered_steps": [
+          "Navigate to the target URL.",
+          "Fill in the username using the label 'Username / email'.",
+          "Fill in the password using the label 'Password'.",
+          "Click the button named 'Sign in'.",
+          "Assert that 'Logged In Successfully' is visible.",
+          "Click the button named 'Add Studio Notebook to cart'.",
+          "Click the button named 'View cart'.",
+          "Click the button named 'Checkout'.",
+          "Fill in 'Full name' with 'Demo Tester'.",
+          "Fill in 'Shipping email' with 'tester@example.test'.",
+          "Fill in 'Shipping address' with '123 Example Street'.",
+          "Click the button named 'Place demo order'.",
+          "Assert that 'Order confirmed' is visible.",
+          "Capture screenshots at login, cart, and confirmation."
+        ]
+      }
+    }
+  ],
+  "repair_events": [
+    {
+      "seq": 1546,
+      "scope_type": "run",
+      "scope_id": "run_cb7950fe4df9463183d39b91fc6dea1c",
+      "source": "agent",
+      "kind": "repair.started",
+      "created_at": "2026-10-11T06:00:03.597102+00:00",
+      "payload": {
+        "agent_id": "p3Sh9BmTzLMC0f8A",
+        "category": "TIMEOUT"
+      }
+    },
+    {
+      "seq": 1547,
+      "scope_type": "run",
+      "scope_id": "run_cb7950fe4df9463183d39b91fc6dea1c",
+      "source": "agent",
+      "kind": "repair.finished",
+      "created_at": "2026-10-11T06:00:10.704743+00:00",
+      "payload": {
+        "agent_id": "p3Sh9BmTzLMC0f8A",
+        "category": "TIMEOUT",
+        "source": "n8n"
+      }
+    },
+    {
+      "seq": 1588,
+      "scope_type": "run",
+      "scope_id": "run_cb7950fe4df9463183d39b91fc6dea1c",
+      "source": "system",
+      "kind": "repair.saved",
+      "created_at": "2026-10-11T06:00:13.197828+00:00",
+      "payload": {
+        "script_version": 2,
+        "reason": "Verified retry"
+      }
+    }
+  ],
+  "visual_review": {
+    "status": "DIFFERENCE",
+    "mismatch_percentage": 3.347,
+    "mismatched_pixels": 30843,
+    "tolerance_threshold": 0.5,
+    "agent_status": "REVIEWED",
+    "agent_id": "bS5GQjs2LrNHrJZH",
+    "agent_summary": "Mismatch is 3.347%, exceeding the 0.5% tolerance. No changed-region or viewport evidence is supplied to establish structural impact."
+  },
+  "business_repair_invocations": 0,
+  "saved_script_version": 2
+}

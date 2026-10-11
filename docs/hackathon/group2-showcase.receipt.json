@@ -1,0 +1,93 @@
+{
+  "video": "group2-showcase.mp4",
+  "duration_seconds": 79.12,
+  "sha256": "f0d272989c63272cf426734f6fe65c666c3f8a48eb7c58586c0b17b6c79e9d99",
+  "capture_kind": "real-browser-real-agents",
+  "waiting_shortened": true,
+  "chapters": [
+    {
+      "label": "01 \u00b7 Create isolated demo shop",
+      "start": 0.74,
+      "source_duration": 1.39,
+      "duration": 4,
+      "speed": 0.3475
+    },
+    {
+      "label": "02 \u00b7 Objective and masked credentials",
+      "start": 2.13,
+      "source_duration": 0.7400000000000002,
+      "duration": 4,
+      "speed": 0.18500000000000005
+    },
+    {
+      "label": "03 \u00b7 Real n8n discovery and first execution",
+      "start": 2.87,
+      "source_duration": 19.779999999999998,
+      "duration": 10,
+      "speed": 1.9779999999999998
+    },
+    {
+      "label": "04 \u00b7 First run passed and scripts captured",
+      "start": 22.65,
+      "source_duration": 6.600000000000001,
+      "duration": 6.600000000000001,
+      "speed": 1.0
+    },
+    {
+      "label": "05 \u00b7 Induce a stale checkout locator on the target",
+      "start": 29.25,
+      "source_duration": 0.7100000000000009,
+      "duration": 4,
+      "speed": 0.1775000000000002
+    },
+    {
+      "label": "06 \u00b7 Saved replay fails; real repair agent and one retry",
+      "start": 29.96,
+      "source_duration": 20.32,
+      "duration": 10,
+      "speed": 2.032
+    },
+    {
+      "label": "07 \u00b7 Verified automatic repair",
+      "start": 50.28,
+      "source_duration": 8.560000000000002,
+      "duration": 8.560000000000002,
+      "speed": 1.0
+    },
+    {
+      "label": "08 \u00b7 Apply visual-only redesign",
+      "start": 58.84,
+      "source_duration": 8.659999999999997,
+      "duration": 8.659999999999997,
+      "speed": 1.0
+    },
+    {
+      "label": "09 \u00b7 Visual comparison: baseline, current, heatmap",
+      "start": 67.5,
+      "source_duration": 5.319999999999993,
+      "duration": 5.319999999999993,
+      "speed": 1.0
+    },
+    {
+      "label": "10 \u00b7 Genuine business error requires manual attention",
+      "start": 72.82,
+      "source_duration": 15.88000000000001,
+      "duration": 10,
+      "speed": 1.588000000000001
+    },
+    {
+      "label": "11 \u00b7 Dashboard reflects saved results",
+      "start": 88.7,
+      "source_duration": 3.6799999999999926,
+      "duration": 4,
+      "speed": 0.9199999999999982
+    },
+    {
+      "label": "12 \u00b7 Showcase complete",
+      "start": 92.38,
+      "source_duration": 0.6200000000000045,
+      "duration": 4,
+      "speed": 0.15500000000000114
+    }
+  ]
+}

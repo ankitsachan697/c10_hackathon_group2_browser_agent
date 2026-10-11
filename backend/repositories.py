@@ -129,6 +129,16 @@ class JourneyRepository(_Repository):
             connection.execute(f"UPDATE journeys SET {assignments} WHERE id = ?", (*updates.values(), resource_id))
         return self.get(resource_id)
 
+    def promote_verified_repair(self, resource_id: str, original_script: str, version: int, repaired_script: str) -> bool:
+        """Save a verified repair only if the version executed is still current."""
+        with self.database.transaction() as connection:
+            cursor = connection.execute(
+                """UPDATE journeys SET script=?,script_version=script_version+1,updated_at=?
+                   WHERE id=? AND script_version=? AND script=? AND active=1""",
+                (repaired_script, _now(), resource_id, version, original_script),
+            )
+            return cursor.rowcount == 1
+
     def list_for_project(self, project_id: str):
         with self.database.connect() as connection:
             return [self._public(_row(row)) for row in connection.execute(

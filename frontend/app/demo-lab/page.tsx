@@ -18,8 +18,10 @@ export default function DemoLabPage() {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   useEffect(() => {
-    void Promise.resolve().then(() => setOrigin(window.location.origin));
-    void api<Scenario[]>("/api/demo-lab/scenarios").then(values => { setScenarios(values); setSelected(values[0]?.id ?? ""); }).catch(failure => setError(failure.message)).finally(() => setLoading(false));
+    let active = true;
+    void Promise.resolve().then(() => { if (active) setOrigin(window.location.origin); });
+    void api<Scenario[]>("/api/demo-lab/scenarios").then(values => { if (active) { setScenarios(values); setSelected(values[0]?.id ?? ""); } }).catch(failure => { if (active) setError(failure.message); }).finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
   }, []);
   const current = scenarios.find(item => item.id === selected);
   const target = current ? origin + current.target_path : "";
@@ -32,8 +34,9 @@ export default function DemoLabPage() {
   const change = async (values: Partial<Scenario>) => {
     if (!current || busy) return;
     setBusy(true); setError(""); setNotice("");
+    setScenarios(items => items.map(item => item.id === current.id ? { ...item, ...values } : item));
     try { const value = await api<Scenario>(`/api/demo-lab/scenarios/${current.id}`, { method: "PATCH", body: JSON.stringify(values) }); setScenarios(items => items.map(item => item.id === value.id ? value : item)); setNotice("Target updated. Reload the shop or replay the saved journey to see the change."); }
-    catch (failure) { setError(failure instanceof Error ? failure.message : "Could not update target"); }
+    catch (failure) { setScenarios(items => items.map(item => item.id === current.id ? current : item)); setError(failure instanceof Error ? failure.message : "Could not update target"); }
     finally { setBusy(false); }
   };
   const copy = async (value: string) => {

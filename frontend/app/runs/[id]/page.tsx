@@ -31,11 +31,12 @@ export default function RunDetailPage({ params }: { params: Promise<{ id: string
   useEffect(() => { void Promise.resolve(params).then(value => setId(value.id)); }, [params]);
   useEffect(() => {
     if (!id) return;
-    void api<Run>(`/api/runs/${id}`).then(setRun).catch(failure => setError(failure instanceof Error ? failure.message : "Run unavailable"));
+    let active = true;
+    void api<Run>(`/api/runs/${id}`).then(value => { if (active) setRun(value); }).catch(failure => { if (active) setError(failure instanceof Error ? failure.message : "Run unavailable"); });
     const timer = window.setInterval(() => {
-      void api<Run>(`/api/runs/${id}`).then(setRun).catch(() => undefined);
+      void api<Run>(`/api/runs/${id}`).then(value => { if (active) setRun(value); }).catch(() => undefined);
     }, 1800);
-    return () => window.clearInterval(timer);
+    return () => { active = false; window.clearInterval(timer); };
   }, [id]);
   if (!run) return <div className="skeleton">{error || "Loading run…"}</div>;
   const rerun = async (mode: "current" | "snapshot") => {
@@ -43,7 +44,7 @@ export default function RunDetailPage({ params }: { params: Promise<{ id: string
     setBusy(true); setError("");
     try {
       const next = await api<Run>(`/api/runs/${id}/rerun`, { method: "POST", body: JSON.stringify({ mode, background: true }) });
-      window.history.pushState(null, "", `/runs/${next.id}`);
+      router.push(`/runs/${next.id}`);
       setRun(next);
       setId(next.id);
     } catch (failure) { setError(failure instanceof Error ? failure.message : "Could not start rerun"); }

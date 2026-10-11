@@ -183,6 +183,7 @@ class N8nClient:
         controls = inspect_target_controls(url)
         prompt = (
             f"Target URL: {url}\n"
+            f"Navigate initially to this exact full URL: {url}. Do not shorten, omit or replace its path, ID, query or fragment.\n"
             f"Objective: {task_objective}\n"
             f"Observed form controls (HTML only, no field values):\n{controls or 'Unavailable; inspect controls at runtime.'}\n"
             f"Prefer these observed control names and attributes; do not invent element names. "
@@ -191,11 +192,14 @@ class N8nClient:
             f"Generate a robust Python Playwright script using sync API (sync_playwright). "
             f"Use supported Playwright locators: page.get_by_label(...) for labeled fields and "
             f"page.get_by_role('button', name=...) for named buttons. Never use the unsupported label= selector engine. "
+            f"Always use exact=True for accessible names and labels, scoped to the visible form if needed. "
+            f"Use page.set_default_timeout(...) when an action timeout is requested; do not substitute fixed sleeps. "
             f"Do not assume a submit button has button[type='submit']; use its accessible name or observed attributes. "
             f"Never hardcode passwords; read from os.environ.get('AUTH_PASSWORD'). "
             f"Never capture screenshots while credentials are present in form fields. Capture only landing and post-submit result evidence. "
             f"Write evidence inside os.environ.get('ARTIFACTS_DIR', './'). "
             f"Assert the outcome specified in the objective. "
+            f"Assert every intermediate outcome explicitly requested, not only the final outcome. "
             f"For text assertions use expect(page.get_by_text(expected_text, exact=True)).to_be_visible() "
             f"or page.get_by_text(expected_text, exact=True).wait_for(state='visible'). "
             f"There is no page.wait_for_text method. Import expect from playwright.sync_api when using assertions. "

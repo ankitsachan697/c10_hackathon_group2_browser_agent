@@ -65,6 +65,12 @@ def _outskill_record_action(action, call):
     try:
         result = call()
     except Exception:
+        capture = globals().get("_worker_capture_failure")
+        if capture:
+            try:
+                capture()
+            except Exception:
+                pass
         print("__OUTSKILL_ACTION__:" + _outskill_json.dumps({"action":action,"phase":"failed"}, separators=(",", ":")), flush=True)
         raise
     print("__OUTSKILL_ACTION__:" + _outskill_json.dumps({"action":action,"phase":"finished"}, separators=(",", ":")), flush=True)

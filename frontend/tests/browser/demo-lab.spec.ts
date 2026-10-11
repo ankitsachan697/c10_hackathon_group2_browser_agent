@@ -21,7 +21,7 @@ test('Studio lab controls a target and starts an explicitly configured journey',
   await expect(page.getByLabel('Change checkout locator')).not.toBeChecked();
   await page.getByRole('link', { name: 'Create demo journey' }).click();
   await expect(page.getByLabel('Journey name')).toHaveValue('Demo shop checkout');
-  await expect(page.getByLabel('Target URL')).toHaveValue(target);
+  await expect(page.getByRole('textbox', { name: 'Target URL', exact: true })).toHaveValue(target);
   await expect(page.getByLabel('Username', { exact: true })).toHaveValue('demo@example.test');
   await expect(page.getByLabel('Password', { exact: true })).toHaveValue('');
   await expect(page.getByRole('tab', { name: 'Playwright Script' })).toHaveCount(0);

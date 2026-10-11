@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import asyncio
+import ast
+from collections import Counter
 import hashlib
 import json
 import mimetypes
@@ -38,6 +40,16 @@ class RunOverlapError(RuntimeError):
     pass
 
 
+def _expectations_preserved(original: str, repaired: str) -> bool:
+    """Conservative guard: locator repair cannot remove or rewrite test assertions."""
+    def assertions(script: str) -> Counter:
+        return Counter(ast.dump(node, include_attributes=False) for node in ast.walk(ast.parse(script))
+                       if isinstance(node, ast.Assert) or (
+                           isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+                           and node.func.attr.startswith(("to_be_", "to_have_", "to_contain_"))))
+    return not (assertions(original) - assertions(repaired))
+
+
 class RunOrchestrator:
     def __init__(self, database: Database, runner: Any, agents: Any, timeout_seconds: int, credential_vault: Any = None,
                  visual_review: VisualReview | None = None, browser_location: str = "local",
@@ -62,6 +74,34 @@ class RunOrchestrator:
     @staticmethod
     def _now() -> str:
         return datetime.now(timezone.utc).isoformat()
+
+    def recover_interrupted(self) -> int:
+        """Startup-only recovery for the documented single-backend deployment.
+
+        Never replay uncertain browser side effects after a process restart.
+        Preserve attempts/evidence and make abandoned runs reviewable/deletable.
+        """
+        active = ("QUEUED", "RUNNING", "DIAGNOSING", "REPAIRING", "RETRYING")
+        now = self._now()
+        reason = "Backend restarted while this run was active; execution was interrupted. Review evidence before rerunning."
+        with self.database.transaction() as connection:
+            rows = connection.execute(
+                "SELECT id FROM runs WHERE status IN (?,?,?,?,?)", active,
+            ).fetchall()
+            for row in rows:
+                connection.execute(
+                    "UPDATE runs SET status=?,finished_at=?,final_decision=? WHERE id=?",
+                    ("NEEDS_ATTENTION", now, reason, row["id"]),
+                )
+                for kind, payload in (
+                    ("run.interrupted", {"reason": reason}),
+                    ("run.finished", {"status": "NEEDS_ATTENTION", "interrupted": True}),
+                ):
+                    connection.execute(
+                        "INSERT INTO activity_events(scope_type,scope_id,source,kind,payload_json,created_at) VALUES (?,?,?,?,?,?)",
+                        ("run", row["id"], "system", kind, json.dumps(payload), now),
+                    )
+        return len(rows)
 
     def _record_attempt(self, run_id: str, attempt_number: int, result: dict[str, Any], secrets: Iterable[str] = ()) -> None:
         redactor = SensitiveDataRedactor(secrets)
@@ -326,6 +366,8 @@ class RunOrchestrator:
                 })
             try:
                 validate_browser_script(repair["repaired_script"])
+                if not _expectations_preserved(script, repair["repaired_script"]):
+                    raise ValueError("Repair changed product expectations")
             except (ValueError, SyntaxError):
                 self._record_agent_invocation(run["id"], configured_agent_id, "FAILED", int((time.monotonic() - repair_started) * 1000), "UNSAFE_REPAIR_SCRIPT")
                 emit("agent", "repair.failed", {"agent_id": configured_agent_id, "category": decision.category, "error_code": "UNSAFE_REPAIR_SCRIPT"})
@@ -361,6 +403,12 @@ class RunOrchestrator:
                 })
             self._record_attempt(run["id"], 2, second, execution_secrets)
             emit("system", "run.attempt_finished", {"attempt": 2, "passed": bool(second.get("passed"))})
+            if second.get("passed"):
+                promoted = self.journeys.promote_verified_repair(journey_id, script, version, repair["repaired_script"])
+                emit("system", "repair.saved" if promoted else "repair.save_skipped", {
+                    "script_version": version + 1 if promoted else version,
+                    "reason": "Verified retry" if promoted else "Saved journey changed since this version was captured",
+                })
             return await complete(second, {
                 "status": (RunStatus.PASSED_AFTER_REPAIR.value if second.get("passed") else RunStatus.NEEDS_ATTENTION.value),
                 "attempt_count": 2,

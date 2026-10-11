@@ -46,6 +46,18 @@ def test_action_failure_is_recorded_and_reraised(capsys):
     assert "broken" not in json.dumps(events)
 
 
+def test_failure_evidence_is_captured_before_generated_script_cleanup():
+    from backend.action_events import instrument_script
+    captured = []
+    namespace = {}
+    namespace["_worker_capture_failure"] = lambda: captured.append(namespace["closed"])
+    source = "closed=False\nclass Page:\n    def click(self): raise RuntimeError('stale locator')\npage=Page()\ntry:\n    page.click()\nfinally:\n    closed=True"
+    with pytest.raises(RuntimeError, match="stale locator"):
+        exec(instrument_script(source), namespace)
+    assert captured == [False]
+    assert namespace["closed"] is True
+
+
 def test_expect_call_is_logged_without_assertion_values(capsys):
     from backend.action_events import instrument_script
 

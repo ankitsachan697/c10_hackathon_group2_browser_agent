@@ -63,6 +63,8 @@ schedule_service = None
 
 @asynccontextmanager
 async def lifespan(application: FastAPI):
+    if application.state.services.orchestrator:
+        application.state.services.orchestrator.recover_interrupted()
     if application.state.services.generation:
         application.state.services.generation.recover()
     if schedule_service:

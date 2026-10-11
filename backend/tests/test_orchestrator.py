@@ -59,6 +59,36 @@ def domain(tmp_path: Path):
     return database, project, journey
 
 
+def test_startup_recovers_interrupted_runs_without_replaying_or_changing_completed_runs(domain):
+    database, project, journey = domain
+    repository = RunRepository(database)
+    active = ["QUEUED", "RUNNING", "DIAGNOSING", "REPAIRING", "RETRYING"]
+    records = {status: repository.create({
+        "project_id": project["id"], "journey_id": journey["id"], "status": status,
+        "script_snapshot": "print('original')", "attempt_count": 1,
+    }) for status in active + ["PASSED", "PASSED_AFTER_REPAIR", "NEEDS_ATTENTION", "FAILED"]}
+    runner, agents = FakeRunner([]), FakeAgents()
+    orchestrator = RunOrchestrator(database, runner, agents, 30)
+
+    assert orchestrator.recover_interrupted() == len(active)
+    assert orchestrator.recover_interrupted() == 0
+    for status, previous in records.items():
+        current = repository.get(previous["id"])
+        assert current["script_snapshot"] == previous["script_snapshot"]
+        assert current["attempt_count"] == 1
+        events = EventStore(database).list_after("run", previous["id"], 0)
+        if status in active:
+            assert current["status"] == "NEEDS_ATTENTION"
+            assert current["finished_at"]
+            assert "interrupted" in current["final_decision"].lower()
+            assert [event["kind"] for event in events] == ["run.interrupted", "run.finished"]
+        else:
+            assert current == previous
+            assert events == []
+    assert runner.calls == []
+    assert agents.repair_calls == []
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize("trigger", list(TriggerSource))
 async def test_all_operational_triggers_execute_saved_script_without_generation(domain, trigger):
@@ -237,6 +267,11 @@ async def test_eligible_failure_repairs_once_and_records_healed_pass(domain):
     assert run["status"] == RunStatus.PASSED_AFTER_REPAIR
     assert run["attempt_count"] == 2
     assert runner.scripts == ["print('saved')", "print('healed')"]
+    saved = JourneyRepository(database).get(journey["id"])
+    assert saved["script"] == "print('healed')"
+    assert saved["script_version"] == 2
+    assert run["script_snapshot"] == "print('saved')"
+    assert run["script_version"] == 1
     assert len(agents.repair_calls) == 1
     with database.connect() as connection:
         attempts = connection.execute(
@@ -269,6 +304,34 @@ async def test_second_failure_needs_attention_and_never_retries_again(domain):
     assert len(agents.repair_calls) == 1
     events = EventStore(database).list_after("run", run["id"], 0)
     assert len([event for event in events if event["kind"] == "run.retry_started"]) == 1
+    assert JourneyRepository(database).get(journey["id"])["script"] == "print('saved')"
+
+
+@pytest.mark.asyncio
+async def test_verified_historic_repair_does_not_overwrite_newer_saved_script(domain):
+    database, _, journey = domain
+    historic = RunRepository(database).create({"journey_id": journey["id"], "status": "FAILED",
+                                               "script_snapshot": journey["script"], "script_version": 1})
+    JourneyRepository(database).update(journey["id"], {"script": "print('newer')"})
+    run = await RunOrchestrator(database, FakeRunner([failing(), passing()]),
+        FakeAgents({"repaired_script": "print('historic healed')"}), 30).run_journey(
+            journey["id"], TriggerSource.RERUN_SNAPSHOT, script_version=historic["id"])
+    assert run["status"] == RunStatus.PASSED_AFTER_REPAIR
+    assert JourneyRepository(database).get(journey["id"])["script"] == "print('newer')"
+    assert JourneyRepository(database).get(journey["id"])["script_version"] == 2
+
+
+@pytest.mark.asyncio
+async def test_repair_cannot_remove_product_expectations(domain):
+    database, _, journey = domain
+    original = "from playwright.sync_api import expect\nexpect(page.get_by_text('Order confirmed', exact=True)).to_be_visible()"
+    JourneyRepository(database).update(journey["id"], {"script": original})
+    runner = FakeRunner([failing(), passing()])
+    run = await RunOrchestrator(database, runner, FakeAgents({"repaired_script": "print('success')"}), 30).run_journey(
+        journey["id"], TriggerSource.ON_DEMAND)
+    assert run["status"] == RunStatus.NEEDS_ATTENTION
+    assert len(runner.calls) == 1
+    assert JourneyRepository(database).get(journey["id"])["script"] == original
 
 
 @pytest.mark.asyncio
