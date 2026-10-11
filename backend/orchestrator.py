@@ -41,12 +41,44 @@ class RunOverlapError(RuntimeError):
 
 
 def _expectations_preserved(original: str, repaired: str) -> bool:
-    """Conservative guard: locator repair cannot remove or rewrite test assertions."""
+    """Keep checks in their original AST position and control-flow context.
+
+    Conservative by design: removing negative checks, outcome waits, moving a
+    check into a swallowed exception, or changing its enclosing condition is
+    not a locator repair. This is not a proof of arbitrary Python semantics.
+    """
     def assertions(script: str) -> Counter:
-        return Counter(ast.dump(node, include_attributes=False) for node in ast.walk(ast.parse(script))
-                       if isinstance(node, ast.Assert) or (
-                           isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
-                           and node.func.attr.startswith(("to_be_", "to_have_", "to_contain_"))))
+        checks = Counter()
+        controls = (ast.If, ast.For, ast.AsyncFor, ast.While, ast.Try, ast.TryStar,
+                    ast.With, ast.AsyncWith, ast.FunctionDef, ast.AsyncFunctionDef,
+                    ast.Lambda, ast.ExceptHandler, ast.Match, ast.match_case,
+                    ast.IfExp, ast.ListComp, ast.SetComp, ast.DictComp, ast.GeneratorExp)
+
+        def visit(node: ast.AST, path: tuple = (), context: tuple = ()) -> None:
+            if isinstance(node, controls):
+                # Statement bodies are traversed separately; retain conditions,
+                # handler types, with-items, signatures and comprehension filters.
+                header = {field: value for field, value in ast.iter_fields(node)
+                          if field not in {"body", "orelse", "finalbody", "handlers", "cases"}}
+                context += (repr({field: ast.dump(value, include_attributes=False) if isinstance(value, ast.AST)
+                                  else [ast.dump(item, include_attributes=False) if isinstance(item, ast.AST) else item for item in value]
+                                  if isinstance(value, list) else value for field, value in header.items()}),)
+            protected = isinstance(node, ast.Assert) or (
+                isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+                and (node.func.attr.startswith(("to_be_", "to_have_", "to_contain_", "not_to_"))
+                     or node.func.attr == "wait_for"))
+            if protected:
+                checks[(ast.dump(node, include_attributes=False), path, context)] += 1
+            for field, value in ast.iter_fields(node):
+                if isinstance(value, ast.AST):
+                    visit(value, path + ((field, None),), context)
+                elif isinstance(value, list):
+                    for index, child in enumerate(value):
+                        if isinstance(child, ast.AST):
+                            visit(child, path + ((field, index),), context)
+
+        visit(ast.parse(script))
+        return checks
     return not (assertions(original) - assertions(repaired))
 
 

@@ -439,10 +439,19 @@ def _worker_capture_failure():
         return
     _worker_failure_captured = True
     # Capture while the failing page still exists, before generated finally blocks close it.
-    # Inputs are masked in pixels and cleared from the DOM evidence, not sent to agents.
-    _worker_last_page.evaluate("document.querySelectorAll('input,textarea').forEach(el => {{ el.removeAttribute('value'); el.value=''; if(el.tagName==='TEXTAREA')el.textContent=''; }})")
+    # Sanitize a detached clone: evidence collection must not alter the live form,
+    # especially when the script handles this failure and tries another locator.
+    snapshot = _worker_last_page.evaluate('''() => {{
+        const copy = document.documentElement.cloneNode(true);
+        copy.querySelectorAll('input,textarea,[contenteditable=true]').forEach(el => {{
+            el.removeAttribute('value');
+            el.value = '';
+            if (el.tagName === 'TEXTAREA' || el.matches('[contenteditable=true]')) el.textContent = '';
+        }});
+        return '<!DOCTYPE html>' + copy.outerHTML;
+    }}''')
     with open(os.path.join(run_dir, "dom_snapshot.html"), "w", encoding="utf-8") as evidence:
-        evidence.write(_worker_last_page.content())
+        evidence.write(snapshot)
     _worker_last_page.screenshot(path=os.path.join(run_dir, "failure.png"), mask=[_worker_last_page.locator("input,textarea,[contenteditable=true]")])
 
 def _connect_or_launch(browser_type, *args, **kwargs):

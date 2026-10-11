@@ -84,3 +84,53 @@ def test_runner_wrapper_keeps_future_imports_legal(tmp_path):
     )
 
     compile(wrapped, "generated.py", "exec")
+
+
+def test_failure_evidence_does_not_clear_fields_before_a_locator_fallback(tmp_path):
+    """Exercise the real Chromium wrapper, including a caught action timeout."""
+    from backend.action_events import instrument_script
+    from backend.runner import PlaywrightRunner
+    from playwright.sync_api import Page
+    from urllib.parse import quote
+
+    html = """<html><body>
+      <input id="shipping" value="123 Synthetic Street">
+      <input id="password" type="password" value="capture-secret">
+      <textarea id="note">private-note</textarea>
+      <div id="editor" contenteditable="true">private-editor</div>
+      <output id="result"></output>
+      <button id="fallback" onclick="document.querySelector('#result').textContent = document.querySelector('#shipping').value">Continue</button>
+    </body></html>"""
+    source = f"""
+from playwright.sync_api import sync_playwright, TimeoutError
+with sync_playwright() as p:
+    browser = p.chromium.launch(headless=True)
+    context = browser.new_context()
+    page = context.new_page()
+    try:
+        page.goto({('data:text/html,' + quote(html))!r})
+        try:
+            page.locator('#missing').click(timeout=100)
+        except TimeoutError:
+            page.locator('#fallback').click()
+        assert page.locator('#result').inner_text() == '123 Synthetic Street'
+        assert page.locator('#shipping').input_value() == '123 Synthetic Street'
+        assert page.locator('#password').input_value() == 'capture-secret'
+        assert page.locator('#note').input_value() == 'private-note'
+        assert page.locator('#editor').inner_text() == 'private-editor'
+    finally:
+        context.close()
+        browser.close()
+"""
+    wrapped = PlaywrightRunner(str(tmp_path))._wrap_script(instrument_script(source), str(tmp_path))
+    namespace = {}
+    original_goto = Page.goto
+    try:
+        exec(wrapped, namespace)
+    finally:
+        Page.goto = original_goto
+
+    evidence = (tmp_path / "dom_snapshot.html").read_text()
+    for private_value in ("123 Synthetic Street", "capture-secret", "private-note", "private-editor"):
+        assert private_value not in evidence
+    assert (tmp_path / "failure.png").stat().st_size > 0

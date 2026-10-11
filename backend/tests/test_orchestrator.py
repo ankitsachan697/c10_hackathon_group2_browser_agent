@@ -335,6 +335,28 @@ async def test_repair_cannot_remove_product_expectations(domain):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("check,repaired", [
+    ("expect(page.get_by_text('Inventory error', exact=True)).not_to_be_visible()", "print('success')"),
+    ("page.get_by_text('Order confirmed', exact=True).wait_for(state='visible')", "print('success')"),
+    ("expect(page.get_by_text('Order confirmed', exact=True)).to_be_visible()",
+     "try:\n    expect(page.get_by_text('Order confirmed', exact=True)).to_be_visible()\nexcept AssertionError:\n    pass"),
+])
+async def test_weakened_outcome_checks_never_retry_or_promote(domain, check, repaired):
+    database, _, journey = domain
+    original = "from playwright.sync_api import expect\n" + check
+    saved = JourneyRepository(database).update(journey["id"], {"script": original})
+    runner = FakeRunner([failing(), passing()])
+    repair = "from playwright.sync_api import expect\n" + repaired
+    run = await RunOrchestrator(database, runner, FakeAgents({"repaired_script": repair}), 30).run_journey(
+        journey["id"], TriggerSource.ON_DEMAND)
+    assert run["status"] == RunStatus.NEEDS_ATTENTION
+    assert run["attempt_count"] == 1
+    assert len(runner.calls) == 1
+    assert JourneyRepository(database).get(journey["id"])["script_version"] == saved["script_version"]
+    assert JourneyRepository(database).get(journey["id"])["script"] == original
+
+
+@pytest.mark.asyncio
 async def test_repair_failure_is_visible_and_does_not_retry(domain):
     database, _, journey = domain
     runner = FakeRunner([failing()])
